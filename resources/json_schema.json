@@ -1,0 +1,635 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "description": "<h2>Overview<\/h2>  Webhook for interfacing with FeedAMP",
+    "version": "0.1.0",
+    "title": "Feedamp Webhook SDK",
+    "contact": {
+      "email": "feedamp@feedonomics.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https:\/\/something.com\/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Orders"
+    }
+  ],
+  "paths": {
+    "\/place_order": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Place an order",
+        "description": "Place orders into into the e-commerce platform",
+        "operationId": "placeOrders",
+        "parameters": [
+          {
+            "name": "store-id",
+            "description": "The id identifies the shop instance",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "token",
+            "description": "The authorization token for the shop",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application\/json": {
+              "schema": {
+                "$ref": "#\/components\/schemas\/PlaceOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request to the ecommerce platform was made",
+            "content": {
+              "application\/json": {
+                "schema": {
+                  "$ref": "#\/components\/schemas\/PlaceOrdersSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request sent to this api failed to validate",
+            "content": {
+              "application\/json": {
+                "schema": {
+                  "$ref": "#\/components\/schemas\/PlaceOrdersErrorValidationResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The request to the ecommerce platform failed",
+            "content": {
+              "application\/json": {
+                "schema": {
+                  "$ref": "#\/components\/schemas\/PlaceOrdersErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Order": {
+        "type": "object",
+        "required": [
+          "currency",
+          "marketplace_name",
+          "mp_order_number",
+          "order_lines",
+          "purchase_date",
+          "shipping_address1",
+          "shipping_city",
+          "shipping_country_code",
+          "shipping_full_name",
+          "shipping_postal_code",
+          "shipping_state"
+        ],
+        "properties": {
+          "mp_order_number": {
+            "type": "string",
+            "description": "The primary order number provided by the marketplace.",
+            "example": "111-99998888-55555"
+          },
+          "mp_alt_order_number": {
+            "type": "string",
+            "description": "A secondary order number provided by some marketplaces.",
+            "example": "152-99632191476188"
+          },
+          "customer_order_number": {
+            "type": "string",
+            "description": "The customer-facing order number provided by some marketplaces.",
+            "example": "19452824"
+          },
+          "marketplace_name": {
+            "type": "string",
+            "description": "The name of the marketplace integration",
+            "example": "amazon_uk"
+          },
+          "sales_channel": {
+            "type": "string",
+            "description": "The specific channel within a marketplace (typically corresponds to region).",
+            "example": "MARKETPLACE.com"
+          },
+          "locale": {
+            "type": "string",
+            "description": "Additional region and\/or language information",
+            "example": "be-FR"
+          },
+          "customer_full_name": {
+            "type": "string",
+            "description": "The full name of the customer.",
+            "example": "John Doe"
+          },
+          "customer_email": {
+            "type": "string",
+            "description": "The customer's email address. Note: Not all marketplaces provide a customer email. If your system requires customer email, a fallback dummy email can be configured. Reach out to our Marketplace team.",
+            "example": "john.doe@example.com"
+          },
+          "customer_phone": {
+            "type": "string",
+            "description": "The phone number of the customer",
+            "example": "5558675309"
+          },
+          "customer_vat": {
+            "type": "string",
+            "description": "International Value-Added Tax identification number of customer",
+            "example": "78131452263"
+          },
+          "purchase_date": {
+            "type": "string",
+            "description": "The datetime of the purchase date.",
+            "example": "2018-05-01T23:52:01.000Z"
+          },
+          "currency": {
+            "type": "string",
+            "description": "The currency in ISO 4217 format.",
+            "example": "USD"
+          },
+          "delivery_notes": {
+            "type": "string",
+            "description": "The customer's instructions to the delivery service regarding where\/how to leave the package.",
+            "example": "leave by the back door."
+          },
+          "estimated_ship_date": {
+            "type": "string",
+            "description": "A single expected ship-by date when a window is not given.",
+            "example": ""
+          },
+          "earliest_ship_date": {
+            "type": "string",
+            "description": "The earliest expected ship-by date.",
+            "example": "2018-02-04T22:00:00.000Z"
+          },
+          "latest_ship_date": {
+            "type": "string",
+            "description": "The latest expected ship-by date.",
+            "example": "2018-02-07T22:00:00.000Z"
+          },
+          "estimated_delivery_date": {
+            "type": "string",
+            "description": "A single expected deliver-by date when a window is not given.",
+            "example": "2018-02-10T22:00:00.000Z"
+          },
+          "latest_delivery_date": {
+            "type": "string",
+            "description": "The latest expected deliver-by date.",
+            "example": ""
+          },
+          "earliest_delivery_date": {
+            "type": "string",
+            "description": "The earliest expected deliver-by date.",
+            "example": "2018-02-10T22:00:00.000Z"
+          },
+          "is_amazon_prime": {
+            "type": "string",
+            "description": "Whether an order is being fulfilled through Amazon Prime",
+            "example": ""
+          },
+          "is_wish_express": {
+            "type": "string",
+            "description": "Whether an order is being fulfilled through Wish Express",
+            "example": ""
+          },
+          "gift_message": {
+            "type": "string",
+            "description": "Gift message attached to order",
+            "example": ""
+          },
+          "paypal_transaction_ids": {
+            "type": "string",
+            "description": "A comma-separated list of transaction IDs generated by PayPal",
+            "example": ""
+          },
+          "feedamp_order_id": {
+            "type": "string",
+            "description": "Order identifier in FeedAMP",
+            "example": ""
+          },
+          "marketing_opt_in": {
+            "type": "string",
+            "description": "Opted in to marketing emails",
+            "example": ""
+          },
+          "shipping_full_name": {
+            "type": "string",
+            "description": "Name on the Shipping Address",
+            "example": "John M. Doe"
+          },
+          "shipping_address_type": {
+            "type": "string",
+            "description": "The category of the shipping address",
+            "example": "business"
+          },
+          "shipping_address1": {
+            "type": "string",
+            "description": "Shipping street address, line 1.",
+            "example": "123 Fake Street"
+          },
+          "shipping_address2": {
+            "type": "string",
+            "description": "Shipping street address, line 2.",
+            "example": "Building 456"
+          },
+          "shipping_address3": {
+            "type": "string",
+            "description": "Shipping street address, line 3.",
+            "example": "Room 789"
+          },
+          "shipping_city": {
+            "type": "string",
+            "description": "Shipping Address (City)",
+            "example": "Ghost Town"
+          },
+          "shipping_state": {
+            "type": "string",
+            "description": "Shipping Address (State or Province)",
+            "example": "DC"
+          },
+          "shipping_postal_code": {
+            "type": "string",
+            "description": "Shipping Address (Postal or Zip code)",
+            "example": "91234"
+          },
+          "shipping_country_code": {
+            "type": "string",
+            "description": "Shipping Address (Country Code)",
+            "example": "USA"
+          },
+          "shipping_phone": {
+            "type": "string",
+            "description": "Shipping Phone Number",
+            "example": "9995550101"
+          },
+          "order_additional_properties": {
+            "type": "object",
+            "description": "Key\/Value pairs of additional order data from the marketplace.",
+            "additionalProperties": true
+          },
+          "order_lines": {
+            "type": "array",
+            "description": "List of ordered products",
+            "items": {
+              "required": [
+                "mp_line_number",
+                "product_name",
+                "quantity",
+                "sku",
+                "unit_price"
+              ],
+              "type": "object",
+              "properties": {
+                "mp_line_number": {
+                  "type": "string",
+                  "description": "The order line identifier provided by the marketplace.",
+                  "example": "afdafasdgasdg"
+                },
+                "sku": {
+                  "type": "string",
+                  "description": "The SKU of the product that was included in the marketplace listing.",
+                  "example": "1234-12353"
+                },
+                "product_name": {
+                  "type": "string",
+                  "description": "The product title, as displayed in the marketplce listing.",
+                  "example": "SAMPLE PRODUCT"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "description": "Amount ordered.",
+                  "example": 1
+                },
+                "unit_price": {
+                  "type": "number",
+                  "description": "The price per product (not total, not inlcuding tax, shipping, or discounts).",
+                  "example": 200
+                },
+                "sales_tax": {
+                  "type": "number",
+                  "description": "The total sales tax for this order line.",
+                  "example": 20
+                },
+                "shipping_method": {
+                  "type": "string",
+                  "description": "The shipping method for this order line.",
+                  "example": "FedEx"
+                },
+                "shipping_price": {
+                  "type": "number",
+                  "description": "The total shipping price for this order line.",
+                  "example": 1.95
+                },
+                "shipping_tax": {
+                  "type": "number",
+                  "description": "The total tax on shipping for this order line.",
+                  "example": 0.19
+                },
+                "discount_name": {
+                  "type": "string",
+                  "description": "The discount identifier, as configured in the marketplace",
+                  "example": ""
+                },
+                "discount": {
+                  "type": "number",
+                  "description": "The order line total discount amount."
+                },
+                "shipping_discount_name": {
+                  "type": "string",
+                  "description": "The shipping discount code \/ identifier.",
+                  "example": ""
+                },
+                "shipping_discount": {
+                  "type": "number",
+                  "description": "The order line total shipping discount."
+                },
+                "commission": {
+                  "type": "number",
+                  "description": "Commission on the sale that will be taken by the marketplace. Note:  If this field is empty, it only means the information is not avaialble along with the order.  It does not mean the commission is 0."
+                },
+                "amount_available_for_refund": {
+                  "type": "number",
+                  "description": "For orders with promotions in Facebook. This is the max amount that the can be refunded for the line.  If the seller is tax inclusive, this value contains all taxes, otherwise the value reflects the pre-tax amount amount.",
+                  "example": 21.98
+                },
+                "is_tax_collected_by_marketplace": {
+                  "type": "boolean",
+                  "description": "Indicate if the taxes are collected by the marketplace.",
+                  "example": false
+                },
+                "order_line_additional_properties": {
+                  "type": "object",
+                  "description": "Key\/Value pairs of additional order line data from the marketplace.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "PlaceOrder": {
+        "description": "Orders to insert into the eCommerce platform",
+        "type": "object",
+        "properties": {
+          "orders": {
+            "type": "array",
+            "minLength": 1,
+            "maxLength": 1,
+            "items": {
+              "$ref": "#\/components\/schemas\/Order"
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "add_delivery_notes_to_notes": {
+                "description": "Include marketplace-provided delivery notes in Shopify order notes. This field will always be included in Additonal Details.",
+                "type": "boolean",
+                "default": false
+              },
+              "add_empty_info": {
+                "description": "Include additional information fields to Additional Details, even when empty.",
+                "type": "boolean",
+                "default": false
+              },
+              "aggregate_shipping_lines": {
+                "description": "Collect all tax lines, shipping lines, and shipping tax lines into a single line, the new default behavior.  (This field has been deprecated and is scheduled for removal)",
+                "type": "boolean",
+                "default": false
+              },
+              "add_customer_order_number_to_notes": {
+                "description": "Include customer-facing marketplace order number in Shopify order notes. This field will always be included in Additonal Details.",
+                "type": "boolean",
+                "default": false
+              },
+              "deduct_shipping_discount_from_shipping_price": {
+                "description": "Apply any shipping discounts directly to the order's shipping price. If this flag is disabled, shipping discounts will instead be combined with order discounts.",
+                "type": "boolean",
+                "default": false
+              },
+              "default_currency": {
+                "description": "Use this currency if order does not specify one",
+                "type": "string",
+                "enum": [
+                  "USD",
+                  "TRY",
+                  "JPY",
+                  "EUR",
+                  " INR",
+                  "AUD",
+                  "GBP",
+                  "MXN",
+                  "CAD",
+                  "BRL"
+                ],
+                "default": "USD"
+              },
+              "dummy_customer_email": {
+                "description": "For customers with no email, report orders to Shopify with this email instead. Otherwise, Customer Name will not appear in the Shopify Order.",
+                "type": "string",
+                "default": "dummy_customer_override@example.com"
+              },
+              "include_marketplace_promo_note": {
+                "description": "include marketplace sponsored discounts in Shopify order notes. This field will always be included in Additonal Details",
+                "type": "boolean",
+                "default": false
+              },
+              "shipping_method_map": {
+                "description": "Translate shipping methods. Keys are Marketplace shipping methods. Values are eCommerce Platform shipping methods. Case-sensitive.",
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "source_name_format": {
+                "description": "Note: Selecting option Marketplace Name will disable searches by Marketplace Order Number in Shopify.",
+                "type": "string",
+                "enum": [
+                  "Marketplace Name",
+                  "Marketplace Name + Marketplace Order Number",
+                  "Marketplace Order Number"
+                ],
+                "default": "Marketplace Name + Marketplace Order Number"
+              },
+              "transaction_gateway": {
+                "description": "Set an order's payment gateway field to this value. Otherwise, will be blank.",
+                "type": "string",
+                "default": ""
+              },
+              "transactions": {
+                "description": "Create a Transaction in Shopify along with placing the Order. No payment information will actually be included. Required for Refund support.",
+                "type": "boolean",
+                "default": false
+              },
+              "use_mp_product_name": {
+                "description": "Place Orders With Marketplace Product Name",
+                "type": "boolean",
+                "default": true
+              },
+              "use_note_attributes": {
+                "description": "Set to true to store all additional information fields (Customer Order Number, Delivery Notes, Marketplace Promotion) in the Additional Details section instead of the Notes section.",
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "required": [
+          "orders"
+        ]
+      },
+      "PlaceOrdersSuccessResponse": {
+        "description": "The response from a call to the place order endpoint",
+        "type": "object",
+        "properties": {
+          "channel_response": {
+            "$ref": "#\/components\/schemas\/ChannelSuccessResponse"
+          }
+        },
+        "required": [
+          "channel_response"
+        ]
+      },
+      "PlaceOrdersErrorResponse": {
+        "description": "The response from a call to the place order endpoint",
+        "type": "object",
+        "properties": {
+          "channel_response": {
+            "type": "object",
+            "oneOf": [
+              {
+                "$ref": "#\/components\/schemas\/ChannelHttpErrorResponse"
+              },
+              {
+                "$ref": "#\/components\/schemas\/ChannelCurlErrorResponse"
+              }
+            ]
+          }
+        },
+        "required": [
+          "channel_response"
+        ]
+      },
+      "ChannelSuccessResponse": {
+        "description": "The response form the eCommerce platform.",
+        "type": "object",
+        "properties": {
+          "headers": {
+            "description": "A list of key value pairs that are the header field and the header value returned in the HTTP request.",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "response_code": {
+            "description": "The HTTP response code from the request to the eCommerce platform",
+            "type": "integer",
+            "example": 200
+          },
+          "response_body": {
+            "description": "The raw HTTP response body returned by the request to the eCommerce platform.",
+            "type": "string",
+            "example": "{\n   \"order\":\n}"
+          }
+        }
+      },
+      "ChannelHttpErrorResponse": {
+        "description": "A non 2XX response from the channel",
+        "type": "object",
+        "properties": {
+          "headers": {
+            "description": "A list of key value pairs that are the header field and the header value returned in the HTTP request.",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "response_code": {
+            "description": "The HTTP response code from the request to the eCommerce platform",
+            "type": "integer",
+            "example": 422
+          },
+          "response_body": {
+            "description": "The raw HTTP response body returned by the request to the eCommerce platform.",
+            "type": "string",
+            "example": "{\n   \"errors\":\n}"
+          },
+          "exception_message": {
+            "description": "The exception\/error message generated by the http client when making the request to the eCommerce platform",
+            "type": "string",
+            "example": "Client error response [url] https:\/\/DOMAIN\/URL\/enpoint.json [status code] 422 [reason phrase] Unprocessable Entity"
+          }
+        }
+      },
+      "ChannelCurlErrorResponse": {
+        "description": "The response form the eCommerce platform.",
+        "type": "object",
+        "properties": {
+          "curl_error": {
+            "description": "Curl error code if encountered when making the HTTP request to the eCommerce platform",
+            "type": "integer",
+            "example": 28
+          },
+          "exception_message": {
+            "description": "The exception\/error message generated by the http client when making the request to the eCommerce platform",
+            "type": "string",
+            "example": "cURL error 28: Connection timed out after 20000 milliseconds"
+          }
+        }
+      },
+      "PlaceOrdersErrorValidationResponse": {
+        "description": "The response to an order placement request that has validation errors",
+        "type": "array",
+        "items": {
+          "$ref": "#\/components\/schemas\/ValidationError"
+        }
+      },
+      "ValidationError": {
+        "description": "Validation error detected when placing\/updating an order",
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "FEEDAMP_FIELD_INCORRECT_DATA_TYPE",
+              "FEEDAMP_FIELD_INVALID_VALUE",
+              "FEEDAMP_MISSING_REQUIRED_FIELD",
+              "FEEDAMP_UNKNOWN_FIELD_PRESENT"
+            ],
+            "description": "Code to uniquely identify the type of error",
+            "example": "FEEDAMP_FIELD_INVALID_VALUE"
+          },
+          "message": {
+            "type": "string",
+            "description": "The error message for the error code",
+            "example": "Value SOMETHING not valid for state"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$schema": "http:\/\/json-schema.org\/draft-04\/schema#"
+}
