@@ -6,7 +6,7 @@ info:
   contact:
     email: feedamp@feedonomics.com
 servers:
-  - url: 'https://something.com/'
+  - url: 'https://something.com'
 tags:
   - name: Orders
 paths:
@@ -15,8 +15,8 @@ paths:
       tags:
         - Orders
       summary: Place an order
-      description: Place orders into into the e-commerce platform
-      operationId: placeOrders
+      description: Place an order into into the e-commerce platform
+      operationId: placeOrder
       parameters:
         - name: store-id
           description: The id identifies the shop instance
@@ -43,19 +43,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaceOrdersSuccessResponse'
+                $ref: '#/components/schemas/PlaceOrderSuccessResponse'
         '400':
           description: The request sent to this api failed to validate
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaceOrdersErrorValidationResponse'
+                $ref: '#/components/schemas/PlaceOrderErrorValidationResponse'
         '502':
           description: The request to the ecommerce platform failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaceOrdersErrorResponse'
+                $ref: '#/components/schemas/PlaceOrderErrorResponse'
 
 components:
   schemas:
@@ -181,6 +181,46 @@ components:
           type: string
           description: Opted in to marketing emails
           example: ''
+        billing_full_name:
+          type: string
+          description: Name on the Billing Address
+          example: John M. Doe
+        billing_address_type:
+          type: string
+          description: The category of the billing address
+          example: business
+        billing_address1:
+          type: string
+          description: 'Billing street address, line 1.'
+          example: 123 Fake Street
+        billing_address2:
+          type: string
+          description: 'Billing street address, line 2.'
+          example: Building 456
+        billing_address3:
+          type: string
+          description: 'Billing street address, line 3.'
+          example: Room 789
+        billing_city:
+          type: string
+          description: Billing Address (City)
+          example: Ghost Town
+        billing_state:
+          type: string
+          description: Billing Address (State or Province)
+          example: DC
+        billing_postal_code:
+          type: string
+          description: Billing Address (Postal or Zip code)
+          example: '91234'
+        billing_country_code:
+          type: string
+          description: Billing Address (Country Code)
+          example: USA
+        billing_phone:
+          type: string
+          description: Billing Phone Number
+          example: '9995550101'
         shipping_full_name:
           type: string
           description: Name on the Shipping Address
@@ -221,6 +261,14 @@ components:
           type: string
           description: Shipping Phone Number
           example: '9995550101'
+        order_tags:
+          type: string
+          description: A comma delimited list of tags for the order
+          example: "Tag1,Tag2"
+        customer_tags:
+          type: string
+          description: A comma delimited list of tags for the customer
+          example: "Tag1,Tag2"
         order_additional_properties:
           type: object
           description: Key/Value pairs of additional order data from the marketplace.
@@ -310,24 +358,27 @@ components:
                 type: boolean
                 description: Indicate if the taxes are collected by the marketplace.
                 example: false
+              is_target_two_day:
+                type: boolean
+                description: Whether an order is being fulfilled through Target Red (2day expedited shipping)
+                example: false
+
               order_line_additional_properties:
                 type: object
                 description: >-
                   Key/Value pairs of additional order line data from the
                   marketplace.
-                additionalProperties: true
+                additionalProperties: {}
+            additionalProperties: false
+      additionalProperties: false
 
     PlaceOrder:
-      description: Orders to insert into the eCommerce platform
+      description: Order to insert into the eCommerce platform
       type: object
       properties:
-        orders:
-          type: array
-          minLength: 1
-          maxLength: 1
-          items:
-            $ref: '#/components/schemas/Order'
-        options:
+        order:
+          $ref: '#/components/schemas/Order'
+        config:
           type: object
           properties:
             add_delivery_notes_to_notes:
@@ -356,7 +407,7 @@ components:
               enum: ['USD', 'TRY', 'JPY', 'EUR', ' INR', 'AUD', 'GBP', 'MXN', 'CAD', 'BRL']
               default: 'USD'
             dummy_customer_email:
-              description: 'For customers with no email, report orders to Shopify with this email instead. Otherwise, Customer Name will not appear in the Shopify Order.'
+              description: 'For customers with no email, report order to Shopify with this email instead. Otherwise, Customer Name will not appear in the Shopify Order.'
               type: string
               default: 'dummy_customer_override@example.com'
             include_marketplace_promo_note:
@@ -382,18 +433,19 @@ components:
               type: boolean
               default: false
             use_mp_product_name:
-              description: Place Orders With Marketplace Product Name
+              description: Place Order With Marketplace Product Name
               type: boolean
               default: true
             use_note_attributes:
               description: Set to true to store all additional information fields (Customer Order Number, Delivery Notes, Marketplace Promotion) in the Additional Details section instead of the Notes section.
               type: boolean
               default: false
+          additionalProperties: false
       required:
-        - orders
+        - order
 
 
-    PlaceOrdersSuccessResponse:
+    PlaceOrderSuccessResponse:
       description: The response from a call to the place order endpoint
       type: object
       properties:
@@ -402,7 +454,7 @@ components:
       required:
         - channel_response
 
-    PlaceOrdersErrorResponse:
+    PlaceOrderErrorResponse:
       description: The response from a call to the place order endpoint
       type: object
       properties:
@@ -471,7 +523,7 @@ components:
           type: string
           example: 'cURL error 28: Connection timed out after 20000 milliseconds'
 
-    PlaceOrdersErrorValidationResponse:
+    PlaceOrderErrorValidationResponse:
       description: The response to an order placement request that has validation errors
       type: array
       items:

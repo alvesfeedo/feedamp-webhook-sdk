@@ -3,8 +3,8 @@
 namespace FeedonomicsWebHookSDK\services;
 
 use FeedonomicsWebHookSDK\services\ConversionUtils;
-
-
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\RequestException;
 class ShopifyClient
 {
 
@@ -443,8 +443,10 @@ class ShopifyClient
         try {
             $client_response = $client->post($url, $options);
             $response_data = ChannelResponse::generate_successful_response($client_response);
-        } catch (\Exception $e) {
+        } catch (RequestException $e) {
             $response_data = ChannelResponse::generate_error_response($e);
+        } catch(ConnectException $e) {
+            $response_data = ChannelResponse::generate_curl_error_response($e);
         }
         return $response_data;
     }

@@ -2,6 +2,7 @@
 
 namespace FeedonomicsWebHookSDK\services;
 
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Response;
 
@@ -26,17 +27,22 @@ class ChannelResponse
      */
     public function generate_error_response(RequestException $exception)
     {
-        if ($exception->hasResponse()) {
-            return [
-                'headers' => $exception->getResponse()->getHeaders(),
-                'response_code' => $exception->getResponse()->getStatusCode(),
-                'response_body' => $exception->getResponse()->getBody()->getContents(),
-                'exception_message' => 'Client error response [url] ' . $exception->getRequest()->getUri() .
-                    ' [status code] ' . $exception->getResponse()->getStatusCode() .
-                    ' [reason phrase] ' . $exception->getResponse()->getReasonPhrase()
-            ];
+        return [
+            'headers' => $exception->getResponse()->getHeaders(),
+            'response_code' => $exception->getResponse()->getStatusCode(),
+            'response_body' => $exception->getResponse()->getBody()->getContents(),
+            'exception_message' => 'Client error response [url] ' . $exception->getRequest()->getUri() .
+            ' [status code] ' . $exception->getResponse()->getStatusCode() .
+            ' [reason phrase] ' . $exception->getResponse()->getReasonPhrase()
+        ];
+    }
 
-        }
+    /**
+     * @param RequestException $exception
+     * @return array
+     */
+    public function generate_curl_error_response(ConnectException $exception)
+    {
         $error_context = $exception->getHandlerContext();
         return [
             'curl_error_code' => $error_context['errno'],
