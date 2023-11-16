@@ -49,13 +49,56 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaceOrderErrorValidationResponse'
+                $ref: '#/components/schemas/RequestValidationResponse'
         '502':
           description: The request to the ecommerce platform failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaceOrderErrorResponse'
+                $ref: '#/components/schemas/ChannelReportedError'
+  /order_statuses:
+    get:
+      tags:
+        - Orders
+      summary: Get fulfillment & Cancellation info
+      description: Get fulfillment and cancellation information for orders
+      operationId: getOrderStatuses
+      parameters:
+        - name: store-id
+          description: The id identifies the shop instance
+          required: true
+          in: header
+          schema:
+            type: string
+            minLength: 1
+        - name: token
+          description: The authorization token for the shop
+          required: true
+          in: header
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: The request to the ecommerce platform was made
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatuesSuccessResponse'
+        '400':
+          description: The request sent to this api failed to validate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestValidationResponse'
+        '502':
+          description: The request to the ecommerce platform failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelReportedError'
+
+
 
 components:
   schemas:
@@ -158,13 +201,13 @@ components:
           description: The earliest expected deliver-by date.
           example: '2018-02-10T22:00:00.000Z'
         is_amazon_prime:
-          type: string
+          type: boolean
           description: Whether an order is being fulfilled through Amazon Prime
-          example: ''
+          default: false
         is_wish_express:
-          type: string
+          type: boolean
           description: Whether an order is being fulfilled through Wish Express
-          example: ''
+          default: false
         gift_message:
           type: string
           description: Gift message attached to order
@@ -362,15 +405,17 @@ components:
                 type: boolean
                 description: Whether an order is being fulfilled through Target Red (2day expedited shipping)
                 example: false
-
+              marketplace_fulfilled:
+                description: Identify the order as haveing ben fulfilled by the marketplace
+                type: boolean
+                default: false
               order_line_additional_properties:
                 type: object
                 description: >-
                   Key/Value pairs of additional order line data from the
                   marketplace.
                 additionalProperties: {}
-            additionalProperties: false
-      additionalProperties: false
+
 
     PlaceOrder:
       description: Order to insert into the eCommerce platform
@@ -440,10 +485,8 @@ components:
               description: Set to true to store all additional information fields (Customer Order Number, Delivery Notes, Marketplace Promotion) in the Additional Details section instead of the Notes section.
               type: boolean
               default: false
-          additionalProperties: false
       required:
         - order
-
 
     PlaceOrderSuccessResponse:
       description: The response from a call to the place order endpoint
@@ -454,7 +497,25 @@ components:
       required:
         - channel_response
 
-    PlaceOrderErrorResponse:
+    OrderStatuesSuccessResponse:
+      description: The response from a call to get order statuses
+      type: object
+      properties:
+        issues:
+          type: object
+          properties:
+            faild_ids:
+              type: array
+              items:
+                type: integer
+
+
+        channel_response:
+          $ref: "#/components/schemas/ChannelSuccessResponse"
+      required:
+        - channel_response
+
+    ChannelReportedError:
       description: The response from a call to the place order endpoint
       type: object
       properties:
@@ -523,7 +584,7 @@ components:
           type: string
           example: 'cURL error 28: Connection timed out after 20000 milliseconds'
 
-    PlaceOrderErrorValidationResponse:
+    RequestValidationResponse:
       description: The response to an order placement request that has validation errors
       type: array
       items:
