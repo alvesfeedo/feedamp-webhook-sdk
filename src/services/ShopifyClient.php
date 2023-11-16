@@ -431,7 +431,7 @@ class ShopifyClient
      */
     public function place_order($store_id, $access_token, $client, $payload )
     {
-        $url = "https://{$store_id}.myshopify.com/admin'/api/2023-01/orders.json";
+        $url = "https://{$store_id}.myshopify.com/admin/api/2023-01/orders.json";
         $headers = [
             'Content-Type' => 'application/json',
             'X-Shopify-Access-Token' => $access_token
