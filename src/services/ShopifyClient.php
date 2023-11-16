@@ -373,7 +373,7 @@ class ShopifyClient
         }
 
         $shopify_order['inventory_behaviour'] = $marketplace_fulfilled ? 'bypass' : 'decrement_obeying_policy';
-        return $shopify_order;
+        return ["order" => $shopify_order];
     }
 
     /**
