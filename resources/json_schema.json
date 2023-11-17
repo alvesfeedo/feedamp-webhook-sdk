@@ -120,6 +120,20 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          {
+            "name": "channel_order_ids",
+            "description": "A array (comma delimited list) of channel order id to retrieve status information",
+            "in": "query",
+            "required": true,
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minLength": 1
+            }
           }
         ],
         "responses": {
@@ -645,13 +659,73 @@
         "description": "The response from a call to get order statuses",
         "type": "object",
         "properties": {
-          "issues": {
-            "type": "object",
-            "properties": {
-              "faild_ids": {
-                "type": "array",
-                "items": {
-                  "type": "integer"
+          "failed_ids": {
+            "description": "List of orders that no status information was able to be retrieved",
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "statuses": {
+            "description": "Fulfillment and Cancellation information for the requested orders",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "description": "The order id",
+                  "type": "string"
+                },
+                "fulfillments": {
+                  "description": "Key value pairs of order line ids and fulfillment information",
+                  "type": "object",
+                  "properties": {
+                    "line_id": {
+                      "type": "object",
+                      "properties": {
+                        "fulfillments": {
+                          "type": "object",
+                          "properties": {
+                            "quantity_shipped": {
+                              "type": "integer"
+                            },
+                            "shipped_date": {
+                              "type": "string"
+                            },
+                            "tracking_number": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "total_fulfilled": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                },
+                "cancellations": {
+                  "description": "Key value pairs of order line ids and cancellation information",
+                  "type": "object",
+                  "properties": {
+                    "line_id": {
+                      "type": "object",
+                      "properties": {
+                        "quantity_cancelled": {
+                          "type": "integer"
+                        },
+                        "cancellation_reason": {
+                          "type": "string",
+                          "enum": [
+                            "customer_cancelled",
+                            "fraud",
+                            "out_of_stock",
+                            "other"
+                          ]
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

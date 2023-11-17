@@ -1,13 +1,11 @@
 <?php
 
-use GuzzleHttp\Exception\RequestException;
+use FeedonomicsWebHookSDK\services\ShopifyClient;
+use FeedonomicsWebHookSDK\services\JsonSchemaValidator;
+use GuzzleHttp\Client as HttpClient;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Factory\AppFactory;
-
-use GuzzleHttp\Client as HttpClient;
-use FeedonomicsWebHookSDK\services\ShopifyClient;
-use FeedonomicsWebHookSDK\services\JsonSchemaValidator;
 
 require __DIR__ . '/../vendor/autoload.php';
 const JSON_SCHEMA_FILE = __DIR__ . '/../resources/json_schema.json';
@@ -80,12 +78,12 @@ $app->post('/place_order', function (Request $request, Response $response, $args
         return $response;
     }
 
-    $shopify_client = new ShopifyClient();
-    $configs = $shopify_client->get_place_order_configs($order_data['config']);
     $client = new HttpClient();
+    $shopify_client = new ShopifyClient($store_id, $access_token, $client);
+    $configs = $shopify_client->get_place_order_configs($order_data['config']);
 
     $payload = $shopify_client->generate_place_order_payload($order_data['order'], $configs);
-    $raw_response = $shopify_client->place_order($store_id, $access_token, $client, $payload);
+    $raw_response = $shopify_client->place_order($payload);
 
 
     if ($shopify_client->is_error_response($raw_response)) {
@@ -97,6 +95,81 @@ $app->post('/place_order', function (Request $request, Response $response, $args
     return $response;
 });
 
+$app->get('/order_statuses', function (Request $request, Response $response, $args) {
+    $response = $response->withHeader('content-type', 'application/json');
+    $store_id = $request->getHeaderLine('store-id');
+    $token = $request->getHeaderLine('token');
+
+    //exchange the JWT token for the access token for the identified store_id
+    $access_token = $token;
+    //
+
+    $validation_errors = [];
+    $query_params = $request->getQueryParams();
+    $ids = $query_params['channel_order_ids'] ?? "";
+    $validate_ids = explode(',', $ids);
+
+    if (!$store_id) {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for required header store-id"
+        ];
+    }
+    if (!$token) {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for required header token"
+        ];
+    }
+
+    if (!$validate_ids) {
+        $validation_errors[] = [
+            [
+                "code" => "MISSING_QUERY_PARAM",
+                "message" => "Missing required channel_order_ids"
+            ]
+        ];
+    }
+    if (count($validate_ids) > 250) {
+        $validation_errors[] = [
+            [
+                "code" => "INVALID_QUERY_PARAM",
+                "message" => "Number of items in channel_order_ids > 250"
+            ]
+        ];
+    }
+
+    if ($validation_errors) {
+        $response = $response->withStatus(400);
+        $response->getBody()->write(json_encode($validation_errors));
+        return $response;
+    }
+
+    $client = new HttpClient();
+    $shopify_client = new ShopifyClient($store_id, $access_token, $client);
+
+    $raw_response = $shopify_client->get_order_statuses($ids);
+
+    $failed_request = $shopify_client->is_error_response($raw_response);
+    $orders = json_decode($raw_response['response_body'] ?? '', true);
+
+    if ($failed_request || !$orders) {
+        $response = $response->withStatus(502);
+        $response->getBody()->write(json_encode([
+            "failed_ids" => $validate_ids,
+            "channel_response" => $raw_response
+        ]));
+        return $response;
+    }
+
+    $order_statuses = $shopify_client->parse_order_statuses_response($orders);
+    $response = $response->withStatus(200);
+    $response->getBody()->write(json_encode([
+        "statuses" => $order_statuses,
+        "channel_response" => $raw_response
+    ]));
+    return $response;
+
+});
+
 $app->run();
-
-
