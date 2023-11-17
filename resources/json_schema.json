@@ -169,6 +169,107 @@
           }
         }
       }
+    },
+    "\/order_refunds": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Get Order Refunds",
+        "description": "Get orders that have any refunds applied for a given date range",
+        "operationId": "getOrderRefunds",
+        "parameters": [
+          {
+            "name": "store-id",
+            "description": "The id identifies the shop instance",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "token",
+            "description": "The authorization token for the shop",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "start_date",
+            "description": "Orders updated on or after",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": 1577836800
+            }
+          },
+          {
+            "name": "end_date",
+            "description": "Orders updated on or before",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": 1577836800
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request to the ecommerce platform was made",
+            "content": {
+              "application\/json": {
+                "schema": {
+                  "$ref": "#\/components\/schemas\/OrderRefundsSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request sent to this api failed to validate",
+            "content": {
+              "application\/json": {
+                "schema": {
+                  "$ref": "#\/components\/schemas\/RequestValidationResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The request to the ecommerce platform failed",
+            "content": {
+              "application\/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "description": "Error message of what occurred during processing the requests to the channel.  As multiple requests are made ths message reflects where in workflow the error was encountered.",
+                      "type": "string",
+                      "example": "Request to get the number of orders with refunds was not successful"
+                    },
+                    "channel_response": {
+                      "description": "The results of the last request made to the channel",
+                      "oneOf": [
+                        {
+                          "$ref": "#\/components\/schemas\/ChannelHttpErrorResponse"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -736,6 +837,62 @@
         },
         "required": [
           "channel_response"
+        ]
+      },
+      "OrderRefundsSuccessResponse": {
+        "type": "object",
+        "properties": {
+          "refunds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "channel_refund_number": {
+                  "type": "string"
+                },
+                "refund": {
+                  "type": "object",
+                  "properties": {
+                    "partial_refund_compatible": {
+                      "type": "boolean"
+                    },
+                    "refund_id": {
+                      "type": "string"
+                    },
+                    "refund_line_id": {
+                      "type": "string"
+                    },
+                    "refunds": {
+                      "description": "The Shopify Order's refunds property",
+                      "type": "object"
+                    },
+                    "order_lines": {
+                      "description": "The Shopify Order's line_items",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "partial_refund_compatible",
+                    "refund_id",
+                    "refund_line_id",
+                    "refunds",
+                    "order_lines"
+                  ]
+                }
+              }
+            }
+          },
+          "page_limit_reached": {
+            "description": "This field indicates if the max allowed number of fetches has been reached.  This is  warning that indicates that not all refunds have been retrieved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "refunds",
+          "page_limit_reached"
         ]
       },
       "ChannelReportedError": {

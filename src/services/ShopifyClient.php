@@ -10,6 +10,8 @@ use GuzzleHttp\Client as HttpClient;
 class ShopifyClient
 {
 
+    const BATCH_SIZE = 250;
+
     const MARKETPLACE_NAME = 'Marketplace Name';
     const MARKETPLACE_NAME_AND_ORDER_NUMBER = 'Marketplace Name + Marketplace Order Number';
     const MARKETPLACE_ORDER_NUMBER = 'Marketplace Order Number';
@@ -743,6 +745,251 @@ class ShopifyClient
         }
 
         return $line_item_id_to_quantity_cancelled_map;
+    }
+
+    public function get_refunds(string $start_date, string $end_date)
+    {
+        $financial_statuses = ['partially_refunded', 'refunded'];
+
+        $start_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($start_date));
+        $end_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($end_date));
+
+        $order_count = 0;
+        $order_refunds = [];
+
+        foreach ($financial_statuses as $status) {
+            $results = $this->get_order_count($status, $start_date_utc, $end_date_utc);
+            if ($this->is_error_response($results)) {
+                return [
+                    'error' => 'Request to get the number of orders with refunds was not successful',
+                    'channel_response' => $results
+                ];
+            }
+            $response = json_decode($results['response_body']);
+            if (!$response) {
+                return [
+                    'error' => 'Invalid json returned in get order count response',
+                    'channel_response' => $results
+                ];
+            }
+            $order_count += (int)$response['count'];
+        }
+        if ($order_count <= 0) {
+            return [
+                'channel_response' => $results
+            ];
+        }
+        $num_orders_so_far = 0;
+
+        foreach ($financial_statuses as $financial_status) {
+            $next_page_params = [];
+            $page_cursor_limit = 0;
+            $is_first_call = true;
+            do {
+                $response = $is_first_call ?
+                    $this->get_raw_refunds($start_date_utc, $end_date_utc, $financial_status) :
+                    $this->get_with_cursor_pagination($next_page_params);
+
+                $next_page_params = $this->extract_next_page_params($response);
+                $next_page_exists = $next_page_params !== false;
+                $is_first_call = false;
+
+                if ($this->is_error_response($response)) {
+                    return [
+                        'error' => 'Request to get orders was not successful',
+                        'channel_response' => $response
+                    ];
+                }
+
+                $refunded_orders = json_decode($response['response_body']);
+                if ($refunded_orders == false) {
+                    return [
+                        'error' => 'Invalid json returned in get orders response',
+                        'channel_response' => $response
+                    ];
+                }
+
+                $shopify_orders = $refunded_orders['orders'];
+
+                if (!is_array($shopify_orders)) {
+                    break;
+                }
+
+                $orders_in_batch = count($shopify_orders);
+                $num_orders_so_far += $orders_in_batch;
+
+                foreach ($shopify_orders as $shopify_order) {
+                    if ($this->order_contains_cancellations($shopify_order)) {
+                        // If an order contains cancellations, we ignore any incoming refunds attached to that order
+                        // We are unable to process refunds for orders that have already been cancelled
+                        continue;
+                    }
+
+
+                    $shopify_refunds = $shopify_order['refunds'];
+
+                    foreach ($shopify_refunds as $shopify_refund) {
+
+                        if (empty($shopify_refund['transactions'])) {
+                            continue;
+                        }
+
+                        foreach ($shopify_refund['refund_line_items'] as $refund_line_item) {
+                            if ($refund_line_item['restock_type'] == 'cancel') {
+                                continue;
+                            }
+                            $order_refunds[] = [
+                                "id" => $shopify_refund['id'],
+                                "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
+                                "refund" => [
+                                    "partial_refund_compatible" => true,
+                                    "refund_id" => $shopify_refund['id'],
+                                    "refund_line_id" => $refund_line_item['id'],
+                                    "refunds" => $shopify_refunds,
+                                    "order_lines" => $shopify_order['line_items'],
+                                ]
+                            ];
+                        }
+
+                        if (empty($shopify_refund['refund_line_items'])) {
+                            foreach ($shopify_order['line_items'] as $order_line_item) {
+                                $order_refunds[] = [
+                                    "id" => $shopify_refund['id'],
+                                    "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
+                                    "refund" => [
+                                        "partial_refund_compatible" => true,
+                                        "refund_id" => $shopify_refund['id'],
+                                        "refund_line_id" => $order_line_item['id'],
+                                        "refunds" => $shopify_refunds,
+                                        "order_lines" => $shopify_order['line_items'],
+                                    ]
+                                ];
+                            }
+                        }
+                    }
+
+                }
+                $page_cursor_limit++;
+            } while ($next_page_exists && $page_cursor_limit < 1000);
+
+            $results = [
+                'refunds' => $order_refunds,
+                'page_limit_reached' => false
+            ];
+            if ($page_cursor_limit >= 1000) {
+                $results['page_limit_reached'] = true;
+            }
+        }
+
+        return $results;
+
+    }
+
+    private function get_order_count(string $financial_status, string $start_date, string $end_date)
+    {
+        $url = $this->get_url();
+        $headers = $this->get_headers();
+        $query = [
+            'status' => 'any',
+            'financial_status' => $financial_status,
+            'updated_at_min' => $start_date,
+            'updated_at_max' => $end_date,
+        ];
+        $options = [
+            'headers' => $headers,
+            'query' => $query
+        ];
+        return $this->get($url, $options);
+    }
+
+    /**
+     * @param $start_date
+     * @param $end_date
+     * @param $financial_status
+     * @return array
+     */
+    private function get_raw_refunds($start_date, $end_date, $financial_status)
+    {
+        $url = $this->get_url();
+        $headers = $this->get_headers();
+        $query = [
+            'status' => 'any',
+            'financial_status' => $financial_status,
+            'updated_at_min' => $start_date,
+            'updated_at_max' => $end_date,
+            'limit' => self::BATCH_SIZE,
+        ];
+        $options = [
+            'headers' => $headers,
+            'query' => $query
+        ];
+        return $this->get($url, $options);
+    }
+
+    public function get_with_cursor_pagination(array $params)
+    {
+        $url = $this->get_url();
+        $headers = $this->get_headers();
+        $options = [
+            'headers' => $headers,
+        ];
+        return $this->get($url, $options);
+    }
+
+    /**
+     * @param array $curl_result
+     * @return array | false
+     */
+    private function extract_next_page_params(array $curl_result)
+    {
+        $next_page_link = $curl_result['headers']['link'] ?? $curl_result['headers']['Link'] ?? null;
+        if (empty($next_page_link)) {
+            return false;
+        }
+
+        /**
+         * Possible version issue between the guzzle5 versions that causes get_headers() to return [ "Link" => [url1, url2] ] rather than ["Link" => "url1, url2" ],
+         * this ternary operator will compensate for both possible cases.
+         */
+        $header_string = is_array($next_page_link) ? implode(", ", $next_page_link) : $next_page_link;
+        $cursor_links = $this->extract_url_links($header_string);
+
+        if (!isset($cursor_links['next'])) return false; // last page
+        $parsed_url = parse_url($cursor_links['next'])['query'];
+        $query_array = [];
+        parse_str($parsed_url, $query_array);
+        return $query_array;
+    }
+
+    /**
+     * @param string $links
+     * @return array | false
+     *
+     * * Link url looks like this on the following pages
+     * 1st - <https://transformingtoys.myshopify.com/admin/api/2020-01/orders.json?limit=250&page_info=eyJsYXN0X2lkIjoxOTk3MTU3MTA1NzY2LCJsYXN0X3ZhbHVlIjoiMjAyMC0wMS0xNCAwMTo0OToyNiIsImRpcmVjdGlvbiI6Im5leHQifQ>; rel="next"
+     * 2nd - <https://transformingtoys.myshopify.com/admin/api/2020-01/orders.json?limit=250&page_info=eyJkaXJlY3Rpb24iOiJwcmV2IiwibGFzdF9pZCI6NzY2NzIzNDU3MTI2LCJsYXN0X3ZhbHVlIjoiMjAxOS0wMS0wNSAwMTowMTowNSJ9>; rel="previous",
+     *          <https://transformingtoys.myshopify.com/admin/api/2020-01/orders.json?limit=250&page_info=eyJkaXJlY3Rpb24iOiJuZXh0IiwibGFzdF9pZCI6NzY2NzAyMDU5NjIyLCJsYXN0X3ZhbHVlIjoiMjAxOS0wMS0wNSAwMDo0MjoyNiJ9>; rel="next"
+     * last - <https://transformingtoys.myshopify.com/admin/api/2020-01/orders.json?limit=250&page_info=eyJkaXJlY3Rpb24iOiJwcmV2IiwibGFzdF9pZCI6NzY2NzAyMDI2ODU0LCJsYXN0X3ZhbHVlIjoiMjAxOS0wMS0wNSAwMDo0MjoyNiJ9>; rel="previous"
+     */
+    private function extract_url_links(string $links)
+    {
+        // Next | Prev, Next | Prev
+        $cursor_pagination_urls = explode(',', $links);
+        $parsedLinks = [];
+
+        foreach ($cursor_pagination_urls as $cursor_pagination_url) {
+            $parsedLink = explode(';', trim($cursor_pagination_url));
+            if (count($parsedLink) == 1 || $parsedLink[1] === '') return false;
+
+            // this regex extracts the next/previous value from rel="value"
+            $trimmed_string = trim($parsedLink[1], ' "');
+            $cleaned_string = str_replace('"', '', $trimmed_string);
+            $cursor_direction = [];
+            parse_str($cleaned_string, $cursor_direction);
+            $parsedLinks[$cursor_direction['rel']] = trim($parsedLink[0], '<>');
+        }
+
+        return $parsedLinks;
     }
 
 
