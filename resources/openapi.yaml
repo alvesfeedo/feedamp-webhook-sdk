@@ -175,6 +175,65 @@ paths:
                     oneOf:
                       - $ref: "#/components/schemas/ChannelHttpErrorResponse"
 
+  /orders:
+    get:
+      tags:
+        - Orders
+      summary: Get New orders
+      description: Get new orders that placed into the channel marketplace but not processed
+      operationId: getOrders
+      parameters:
+        - name: store-id
+          description: The id identifies the shop instance
+          required: true
+          in: header
+          schema:
+            type: string
+            minLength: 1
+        - name: token
+          description: The authorization token for the shop
+          required: true
+          in: header
+          schema:
+            type: string
+            minLength: 1
+        - name: start_date
+          description: Orders updated on or after
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: 2020-01-01T00:00:00.000Z
+      responses:
+        '200':
+          description: The request to the ecommerce platform was made
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersSuccessResponse'
+        '400':
+          description: The request sent to this api failed to validate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestValidationResponse'
+        '502':
+          description: The request to the ecommerce platform failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    description: Error message of what occurred during processing the requests to the channel.  As multiple requests are made ths message reflects where in workflow the error was encountered.
+                    type: string
+                    example: Request to get the number of orders with refunds was not successful
+                  channel_response:
+                    description: The results of the last request made to the channel
+                    oneOf:
+                      - $ref: "#/components/schemas/ChannelHttpErrorResponse"
+
 components:
   schemas:
     Order:
@@ -679,11 +738,26 @@ components:
                   - refunds
                   - order_lines
         page_limit_reached:
-          description:  This field indicates if the max allowed number of fetches has been reached.  This is  warning that indicates that not all refunds have been retrieved
+          description:  This field indicates if the max allowed number of fetches has been reached.  This warning indicates not all refunds have been retrieved
           type: boolean
       required:
         - refunds
         - page_limit_reached
+
+    OrdersSuccessResponse:
+      type: object
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        page_limit_reached:
+          description:  This field indicates if the max allowed number of fetches has been reached.  This warning indicates not all orders have been retrieved
+          type: boolean
+      required:
+        - refunds
+        - page_limit_reached
+
 
     ChannelReportedError:
       description: The response from a call to the place order endpoint

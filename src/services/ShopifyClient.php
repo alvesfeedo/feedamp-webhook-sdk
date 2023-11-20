@@ -10,7 +10,10 @@ use GuzzleHttp\Client as HttpClient;
 class ShopifyClient
 {
 
-    const BATCH_SIZE = 250;
+    const API_VERSION = "2023-01";
+    const MAX_ORDER_BATCH_SIZE = 250;
+    const MAX_ORDER_PAGES = 50;
+    const MAX_REFUND_PAGE_LIMIT = 1000;
 
     const MARKETPLACE_NAME = 'Marketplace Name';
     const MARKETPLACE_NAME_AND_ORDER_NUMBER = 'Marketplace Name + Marketplace Order Number';
@@ -445,7 +448,7 @@ class ShopifyClient
      */
     public function place_order($payload)
     {
-        $url = $this->get_url();
+        $url = $this->get_orders_url();
         $headers = $this->get_headers();
         $options = [
             'headers' => $headers,
@@ -490,7 +493,7 @@ class ShopifyClient
     public function get_order_statuses(string $ids)
     {
         $num_ids = count($ids);
-        $url = $this->get_url();
+        $url = $this->get_orders_url();
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
@@ -749,6 +752,11 @@ class ShopifyClient
 
     public function get_refunds(string $start_date, string $end_date)
     {
+        $response = [
+            'refunds' => [],
+            'page_limit_reached' => false
+        ];
+
         $financial_statuses = ['partially_refunded', 'refunded'];
 
         $start_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($start_date));
@@ -838,7 +846,7 @@ class ShopifyClient
                             if ($refund_line_item['restock_type'] == 'cancel') {
                                 continue;
                             }
-                            $order_refunds[] = [
+                            $response['refunds'][] = [
                                 "id" => $shopify_refund['id'],
                                 "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
                                 "refund" => [
@@ -853,7 +861,7 @@ class ShopifyClient
 
                         if (empty($shopify_refund['refund_line_items'])) {
                             foreach ($shopify_order['line_items'] as $order_line_item) {
-                                $order_refunds[] = [
+                                $response['refunds'][] = [
                                     "id" => $shopify_refund['id'],
                                     "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
                                     "refund" => [
@@ -870,13 +878,9 @@ class ShopifyClient
 
                 }
                 $page_cursor_limit++;
-            } while ($next_page_exists && $page_cursor_limit < 1000);
+            } while ($next_page_exists && $page_cursor_limit < self::MAX_REFUND_PAGE_LIMIT);
 
-            $results = [
-                'refunds' => $order_refunds,
-                'page_limit_reached' => false
-            ];
-            if ($page_cursor_limit >= 1000) {
+            if ($page_cursor_limit >= self::MAX_REFUND_PAGE_LIMIT) {
                 $results['page_limit_reached'] = true;
             }
         }
@@ -887,7 +891,7 @@ class ShopifyClient
 
     private function get_order_count(string $financial_status, string $start_date, string $end_date)
     {
-        $url = $this->get_url();
+        $url = $this->get_orders_url();
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
@@ -910,14 +914,14 @@ class ShopifyClient
      */
     private function get_raw_refunds($start_date, $end_date, $financial_status)
     {
-        $url = $this->get_url();
+        $url = $this->get_orders_url();
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
             'financial_status' => $financial_status,
             'updated_at_min' => $start_date,
             'updated_at_max' => $end_date,
-            'limit' => self::BATCH_SIZE,
+            'limit' => self::MAX_ORDER_BATCH_SIZE,
         ];
         $options = [
             'headers' => $headers,
@@ -928,7 +932,7 @@ class ShopifyClient
 
     public function get_with_cursor_pagination(array $params)
     {
-        $url = $this->get_url();
+        $url = $this->get_orders_url();
         $headers = $this->get_headers();
         $options = [
             'headers' => $headers,
@@ -992,13 +996,230 @@ class ShopifyClient
         return $parsedLinks;
     }
 
+    /**
+     * @param string $start_date
+     * @return mixed
+     */
+    public function get_orders(string $start_date)
+    {
+        $response = [
+            "orders" => [],
+            'page_limit_reached' => false
+        ];
+        $last_order_id = 0;
+        $page = 0;
+
+        do{
+            $params = $this->build_qet_order_request($last_order_id,  $start_date, self::MAX_ORDER_BATCH_SIZE);
+            $orders_response = $this->list_orders($params);
+            if ($this->is_error_response($orders_response)){
+                return [
+                    'error' => 'Request to get orders was not successful',
+                    "channel_response"=> $orders_response
+                ];
+            }
+            $orders = json_decode($orders_response['response_body']);
+            if (!$orders) {
+                return [
+                    'error' => 'Invalid json returned in get orders response',
+                    "channel_response"=> $orders_response
+                ];
+            }
+
+            $orders_count = count($orders['orders']);
+            foreach($orders['orders'] as $order) {
+                $response['orders'][] = $this->generate_order($order);
+                $last_order_id = $order['id'];
+            }
+            $page++;
+
+        }while( $page < self::MAX_ORDER_PAGES && $orders_count >= self::MAX_ORDER_BATCH_SIZE );
+
+        if($page >= self::MAX_ORDER_PAGES) {
+            $response['page_limit_reached'] = true;
+        }
+        return $response;
+    }
 
     /**
+     * @param $last_order_id
+     * @param $created_at_min
+     * @param $batch_size_limit
+     * @return array
+     */
+    private function build_qet_order_request($last_order_id, $created_at_min, $batch_size_limit)
+    {
+        return [
+            'status'             => 'open',
+            'fulfillment_status' => 'unshipped',
+            'financial_status'   => 'paid',
+            'created_at_min' => $created_at_min,
+            'since_id' => $last_order_id,
+            'limit' => $batch_size_limit
+        ];
+    }
+
+    /**
+     * @param $query_params
+     * @return array
+     */
+    private function list_orders($query_params)
+    {
+        $headers = $this->get_headers();
+        $options = [
+            'headers' => $headers,
+            'query' => $query_params
+        ];
+
+        return $this->get($this->get_orders_url(), $options);
+    }
+
+    public function generate_order($mp_order)
+    {
+
+        $shipping_tax_values = 0.00;
+        foreach ( $mp_order['shipping_lines'] as $shipping_line ) {
+            if ( !empty( $shipping_line['tax_lines'] ) ) {
+                foreach ( $shipping_line['tax_lines'] as $tax_line ) {
+                    $shipping_tax_values += $tax_line['price'];
+                }
+            }
+        }
+
+        $number_of_order_lines = count( $mp_order['line_items'] );
+
+        $shipping_tax_values = OrderUtils::divide_currency_among_lines( $shipping_tax_values, $number_of_order_lines );
+        $shipping_price_values = OrderUtils::divide_currency_among_lines( $mp_order['total_shipping_price_set']['shop_money']['amount'], $number_of_order_lines );
+
+        $note = $mp_order['note'] ?? "";
+        $delivery_notes_string = "Notes: \n" . ltrim($note) . "\n";
+
+        if ( isset( $mp_order['payment_gateway_names'] ) ) {
+
+            $payment_method = array_map( function ( $gateway ) {
+                return $gateway ?? "";
+            }, $mp_order['payment_gateway_names'] );
+
+            if ( !empty( $payment_method ) ) {
+                $delivery_notes_string .= "Payment Type: " . implode( ", ", $payment_method ) . "\n";
+            }
+        }
+
+        if($mp_order['checkout_id']) {
+            $delivery_notes_string .= "Checkout ID: {$mp_order['checkout_id']}\n";
+        }
+
+        if($mp_order['order_number']) {
+            $delivery_notes_string .= "Order Number: {$mp_order['name']}\n";
+        }
+
+        if ( isset( $mp_order['note_attributes'] ) ) {
+            $delivery_notes_string .= "Additional Details:\n";
+            foreach($mp_order['note_attributes'] as $note_attribute){
+                $delivery_notes_string .= "{$note_attribute['name']}: {$note_attribute['value']}\n";
+            }
+        }
+
+        if(isset($mp_order['payment_details'])){
+            $last_four_digits_of_cc_delimited = $this->parse_last_four_cc($mp_order['payment_details']);
+            $delivery_notes_string .= "Last 4 CC digits: {$last_four_digits_of_cc_delimited}";
+        }
+
+        $discount_applications = [];
+        $shipping_discount_lines = 0.00;
+        $shipping_discount_descriptions = [];
+        if(isset($mp_order['discount_applications'])){
+            $discount_applications = array_filter($mp_order['discount_applications'], function($discount){
+                return $discount['target_type'] === 'shipping_line';
+            });
+
+
+            if($discount_applications) {
+                $total_shipping_discount = 0.00;
+                foreach($discount_applications as $discount) {
+                    $shipping_discount_descriptions[] = $discount['description'];
+                    $total_shipping_discount += $discount['value'];
+                }
+                $shipping_discount_lines = OrderUtils::divide_currency_among_lines($total_shipping_discount, $number_of_order_lines);
+            }
+        }
+
+        $purchase_date = $mp_order['created_at'] ?? '';
+        $purchase_date = ConversionUtils::convert_date_to_utc_iso_8601($purchase_date);
+
+        $normalized_order = [
+            'mp_order_number'       => $mp_order['id'],
+            'mp_alt_order_number'   => $mp_order['name'] ?? "",
+            'marketplace_name'      => 'Shopify',
+            'sales_channel'         => 'Shopify',
+            'purchase_date'         => $purchase_date,
+            'customer_email'        => $mp_order['email'] ?? "",
+            'currency'              => $mp_order['currency'] ?? "",
+            'delivery_notes'        => $delivery_notes_string,
+            'customer_full_name'    => $mp_order['billing_address']['name'] ?? '',
+            'customer_phone'        => $mp_order['billing_address']['phone'] ?? '',
+            'shipping_full_name'    => $mp_order['shipping_address']['name'] ?? '',
+            'shipping_address1'     => $mp_order['shipping_address']['address1'] ?? '',
+            'shipping_address2'     => $mp_order['shipping_address']['address2'] ?? "",
+            'shipping_city'         => $mp_order['shipping_address']['city'] ?? '',
+            'shipping_state'        => $mp_order['shipping_address']['province_code'] ?? '',
+            'shipping_postal_code'  => $mp_order['shipping_address']['zip'] ?? '',
+            'shipping_country_code' => ConversionUtils::convert_country_code_to_ISO3( $mp_order['shipping_address']['country_code'] ?? '' ),
+            'shipping_phone'        => $mp_order['shipping_address']['phone'] ?? "",
+            'order_lines'           => array_map( function ( $line_item, $key ) use ( $shipping_price_values, $shipping_tax_values, $mp_order, $shipping_discount_lines, $shipping_discount_descriptions ) {
+                $line_item_discount_names = [];
+                $line_item_discount_sum = 0;
+
+                array_map(function($discount) use($mp_order, &$line_item_discount_names, &$line_item_discount_sum){
+                    $line_item_discount_sum += $discount['amount'] ?? 0;
+                    $discount_application_index = $discount['discount_application_index'];
+
+                    if ( isset($mp_order['discount_applications'][$discount_application_index]['code']) ){
+                        $line_item_discount_names[] = $mp_order['discount_applications'][$discount_application_index]['code'];
+                    }
+                    elseif ( isset($mp_order['discount_applications'][$discount_application_index]['title']) ){
+                        $line_item_discount_names[] = $mp_order['discount_applications'][$discount_application_index]['title'];
+                    }
+                    elseif (isset($mp_order['discount_applications'][$discount_application_index]['description']) ){
+                        $line_item_discount_names[] = $mp_order['discount_applications'][$discount_application_index]['description'];
+                    }
+
+                }, $line_item['discount_allocations']);
+
+                $line_item_discount_names = implode(", ", $line_item_discount_names);
+                $shipping_discount = isset($shipping_discount_lines[$key]) ? -1 * (float) $shipping_discount_lines[$key] : 0.00;
+                $line_item_discount = $line_item_discount_sum ? -1 * $line_item_discount_sum : 0.00;
+
+                return [
+                    'mp_line_number'          => $line_item['id'],
+                    'sku'                     => $line_item['sku'] ?? '',
+                    'quantity'                => $line_item['quantity'] ?? 0,
+                    'product_name'            => $line_item['title'] ?? '',
+                    'unit_price'              => $line_item['price'] ?? 0,
+                    'discount'                => number_format($line_item_discount,2),
+                    'discount_name'           => $line_item_discount_names,
+                    'shipping_discount'       => number_format($shipping_discount,2),
+                    'shipping_discount_name'  => implode(', ',$shipping_discount_descriptions),
+                    'shipping_price'          => number_format((float) $shipping_price_values[$key] ?? 0.00,2),
+                    'shipping_tax'            => number_format((float) $shipping_tax_values[$key] ?? 0.00,2),
+                    'shipping_method'         => $mp_order['shipping_lines'][0]['title'] ?? "",
+                    'sales_tax'               => number_format(array_sum( array_map( function ( $tax_line ) {
+                        return $tax_line['price'];
+                    }, $line_item['tax_lines'] ) ),2),
+                ];
+            }, $mp_order['line_items'], range( 0, $number_of_order_lines - 1 ) ),
+        ];
+
+        return $normalized_order;
+    }
+
+    /**
+     * @param string $api_version
      * @return string
      */
-    private function get_url()
+    private function get_orders_url(string $api_version = self::API_VERSION)
     {
-        return "https://{$this->store_id}.myshopify.com/admin/api/2023-01/orders.json";
+        return "https://{$this->store_id}.myshopify.com/admin/api/{$api_version}/orders.json";
     }
 
     /**

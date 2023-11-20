@@ -251,4 +251,65 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
 
 });
 
+$app->get('/orders', function (Request $request, Response $response, $args) {
+    $response = $response->withHeader('content-type', 'application/json');
+    $store_id = $request->getHeaderLine('store-id');
+    $token = $request->getHeaderLine('token');
+
+    //exchange the JWT token for the access token for the identified store_id
+    $access_token = $token;
+    //
+
+    $validation_errors = [];
+    $query_params = $request->getQueryParams();
+
+    if (!$store_id) {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for required header store-id"
+        ];
+    }
+    if (!$token) {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for required header token"
+        ];
+    }
+
+    if(!isset($query_params['start_date']))
+    {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for start_date"
+        ];
+    }
+    if(!strtotime($query_params['start_date'])){
+        $validation_errors[] = [
+            "code" => "FIELD_INVALID_VALUE",
+            "message" => "Value for start_date could not be parsed"
+        ];
+    }
+
+    if ($validation_errors) {
+        $response = $response->withStatus(400);
+        $response->getBody()->write(json_encode($validation_errors));
+        return $response;
+    }
+
+    $start_date = $query_params['start_date'];
+
+    $client = new HttpClient();
+    $shopify_client = new ShopifyClient($store_id, $access_token, $client);
+
+    $raw_response = $shopify_client->get_orders($start_date);
+
+    if (isset($raw_response['channel_response'])) {
+        $response = $response->withStatus(502);
+    }
+    else {
+        $response = $response->withStatus(200);
+    }
+    $response->getBody()->write(json_encode($raw_response));
+    return $response;
+});
 $app->run();
