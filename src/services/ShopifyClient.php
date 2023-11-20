@@ -439,6 +439,20 @@ class ShopifyClient
         );
     }
 
+    public function place_order($payload)
+    {
+        $response = $this->client_place_order($payload);
+
+        if($this->is_error_response($response)){
+            $invalid_phone_error_detected = strpos($response['response_body'],'Phone is invalid');
+            if($invalid_phone_error_detected) {
+                unset($payload['order']['phone']);
+                return $this->client_place_order($payload);
+            }
+        }
+        return $response;
+    }
+
     /**
      * @param $store_id
      * @param $access_token
@@ -446,7 +460,7 @@ class ShopifyClient
      * @param $payload
      * @return array
      */
-    public function place_order($payload)
+    private function client_place_order($payload)
     {
         $url = $this->get_orders_url();
         $headers = $this->get_headers();
