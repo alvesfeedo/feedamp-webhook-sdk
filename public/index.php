@@ -197,17 +197,15 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
             "message" => "Missing value for required header token"
         ];
     }
-    foreach(["start_date", "end_date"] as $date)
-    {
-        if(!isset($query_params[$date]))
-        {
+    foreach (["start_date", "end_date"] as $date) {
+        if (!isset($query_params[$date])) {
             $validation_errors[] = [
                 "code" => "MISSING_REQUIRED_FIELD",
-                "message" => "Missing value for ".$date
+                "message" => "Missing value for " . $date
             ];
             continue;
         }
-        if(!strtotime($query_params[$date])){
+        if (!strtotime($query_params[$date])) {
             $validation_errors[] = [
                 "code" => "FIELD_INVALID_VALUE",
                 "message" => "Value for {$date} could not be parsed"
@@ -228,6 +226,82 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
     $raw_response = $shopify_client->get_refunds($start_date, $end_date);
+
+    $failed_request = $shopify_client->is_error_response($raw_response);
+    $orders = json_decode($raw_response['response_body'] ?? '', true);
+
+    if ($failed_request || !$orders) {
+        $response = $response->withStatus(502);
+        $response->getBody()->write(json_encode([
+            "channel_response" => $raw_response
+        ]));
+        return $response;
+    }
+
+    $order_statuses = $shopify_client->parse_order_statuses_response($orders);
+    $response = $response->withStatus(200);
+    $response->getBody()->write(json_encode([
+        "statuses" => $order_statuses,
+        "channel_response" => $raw_response
+    ]));
+    return $response;
+
+});
+
+$app->get('/inventory_info', function (Request $request, Response $response, $args) {
+    $response = $response->withHeader('content-type', 'application/json');
+    $store_id = $request->getHeaderLine('store-id');
+    $token = $request->getHeaderLine('token');
+
+    //exchange the JWT token for the access token for the identified store_id
+    $access_token = $token;
+    //
+
+    $validation_errors = [];
+    $query_params = $request->getQueryParams();
+    $ids = $query_params['variant_ids'] ?? "";
+    $validate_ids = explode(',', $ids);
+
+    if (!$store_id) {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for required header store-id"
+        ];
+    }
+    if (!$token) {
+        $validation_errors[] = [
+            "code" => "MISSING_REQUIRED_FIELD",
+            "message" => "Missing value for required header token"
+        ];
+    }
+
+    if (!$validate_ids) {
+        $validation_errors[] = [
+            [
+                "code" => "MISSING_QUERY_PARAM",
+                "message" => "Missing required variant_ids"
+            ]
+        ];
+    }
+    if (count($validate_ids) > 250) {
+        $validation_errors[] = [
+            [
+                "code" => "INVALID_QUERY_PARAM",
+                "message" => "Number of variant_id in variant_ids > 250"
+            ]
+        ];
+    }
+
+    if ($validation_errors) {
+        $response = $response->withStatus(400);
+        $response->getBody()->write(json_encode($validation_errors));
+        return $response;
+    }
+
+    $client = new HttpClient();
+    $shopify_client = new ShopifyClient($store_id, $access_token, $client);
+
+    $raw_response = $shopify_client->get_order_statuses($ids);
 
     $failed_request = $shopify_client->is_error_response($raw_response);
     $orders = json_decode($raw_response['response_body'] ?? '', true);
@@ -276,14 +350,13 @@ $app->get('/orders', function (Request $request, Response $response, $args) {
         ];
     }
 
-    if(!isset($query_params['start_date']))
-    {
+    if (!isset($query_params['start_date'])) {
         $validation_errors[] = [
             "code" => "MISSING_REQUIRED_FIELD",
             "message" => "Missing value for start_date"
         ];
     }
-    if(!strtotime($query_params['start_date'])){
+    if (!strtotime($query_params['start_date'])) {
         $validation_errors[] = [
             "code" => "FIELD_INVALID_VALUE",
             "message" => "Value for start_date could not be parsed"
@@ -303,10 +376,9 @@ $app->get('/orders', function (Request $request, Response $response, $args) {
 
     $raw_response = $shopify_client->get_orders($start_date);
 
-    if (isset($raw_response['channel_response'])) {
+    if ($shopify_client->is_error_response($raw_response)) {
         $response = $response->withStatus(502);
-    }
-    else {
+    } else {
         $response = $response->withStatus(200);
     }
     $response->getBody()->write(json_encode($raw_response));

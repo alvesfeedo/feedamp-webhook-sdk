@@ -773,7 +773,7 @@ class ShopifyClient
                     'channel_response' => $results
                 ];
             }
-            $response = json_decode($results['response_body']);
+            $response = json_decode($results['response_body'], true);
             if (!$response) {
                 return [
                     'error' => 'Invalid json returned in get order count response',
@@ -809,7 +809,7 @@ class ShopifyClient
                     ];
                 }
 
-                $refunded_orders = json_decode($response['response_body']);
+                $refunded_orders = json_decode($response['response_body'], true);
                 if ($refunded_orders == false) {
                     return [
                         'error' => 'Invalid json returned in get orders response',
@@ -996,6 +996,51 @@ class ShopifyClient
         return $parsedLinks;
     }
 
+
+    public function get_inventory_info(array $variant_ids)
+    {
+        $response = [
+            'inventory' => []
+        ];
+        foreach ($variant_ids as $variant_id) {
+            $response = $this->get_variant_product($variant_id);
+            if ($this->is_error_response($response)) {
+                return [
+                    'error' => 'Request to get inventory was not successful',
+                    'channel_response' => $response
+                ];
+            }
+            $inventory = json_decode($response['request_body'], true);
+            if (!$inventory) {
+                return [
+                    'error' => 'Invalid json returned in get inventory response',
+                    "channel_response" => $response
+                ];
+            }
+            $inventory_qty = $variant_info['variant']['inventory_quantity'] ?? 0;
+            $info = [
+                'stock' => $inventory_qty
+            ];
+            $product_id = $variant_info['variant']['product_id'] ?? '';
+            if ($product_id) {
+                $info['product_id'] = $product_id;
+                $info['url'] = "https://admin.shopify.com/store/{$this->store_id}/products/{$product_id}/variants/{$variant_id}";
+            }
+            $response['inventory'][$variant_id] = $info;
+        }
+    }
+
+    private function get_variant_product($variant_id)
+    {
+        $headers = $this->get_headers();
+        $options = [
+            'headers' => $headers
+        ];
+        $request_url = $this->get_api_base_url() . "/variants/{$variant_id}.json";
+        return $this->get($request_url, $options);
+    }
+
+
     /**
      * @param string $start_date
      * @return mixed
@@ -1009,33 +1054,33 @@ class ShopifyClient
         $last_order_id = 0;
         $page = 0;
 
-        do{
-            $params = $this->build_qet_order_request($last_order_id,  $start_date, self::MAX_ORDER_BATCH_SIZE);
+        do {
+            $params = $this->build_qet_order_request($last_order_id, $start_date, self::MAX_ORDER_BATCH_SIZE);
             $orders_response = $this->list_orders($params);
-            if ($this->is_error_response($orders_response)){
+            if ($this->is_error_response($orders_response)) {
                 return [
                     'error' => 'Request to get orders was not successful',
-                    "channel_response"=> $orders_response
+                    "channel_response" => $orders_response
                 ];
             }
-            $orders = json_decode($orders_response['response_body']);
+            $orders = json_decode($orders_response['response_body'], true);
             if (!$orders) {
                 return [
                     'error' => 'Invalid json returned in get orders response',
-                    "channel_response"=> $orders_response
+                    "channel_response" => $orders_response
                 ];
             }
 
             $orders_count = count($orders['orders']);
-            foreach($orders['orders'] as $order) {
+            foreach ($orders['orders'] as $order) {
                 $response['orders'][] = $this->generate_order($order);
                 $last_order_id = $order['id'];
             }
             $page++;
 
-        }while( $page < self::MAX_ORDER_PAGES && $orders_count >= self::MAX_ORDER_BATCH_SIZE );
+        } while ($page < self::MAX_ORDER_PAGES && $orders_count >= self::MAX_ORDER_BATCH_SIZE);
 
-        if($page >= self::MAX_ORDER_PAGES) {
+        if ($page >= self::MAX_ORDER_PAGES) {
             $response['page_limit_reached'] = true;
         }
         return $response;
@@ -1050,9 +1095,9 @@ class ShopifyClient
     private function build_qet_order_request($last_order_id, $created_at_min, $batch_size_limit)
     {
         return [
-            'status'             => 'open',
+            'status' => 'open',
             'fulfillment_status' => 'unshipped',
-            'financial_status'   => 'paid',
+            'financial_status' => 'paid',
             'created_at_min' => $created_at_min,
             'since_id' => $last_order_id,
             'limit' => $batch_size_limit
@@ -1078,49 +1123,49 @@ class ShopifyClient
     {
 
         $shipping_tax_values = 0.00;
-        foreach ( $mp_order['shipping_lines'] as $shipping_line ) {
-            if ( !empty( $shipping_line['tax_lines'] ) ) {
-                foreach ( $shipping_line['tax_lines'] as $tax_line ) {
+        foreach ($mp_order['shipping_lines'] as $shipping_line) {
+            if (!empty($shipping_line['tax_lines'])) {
+                foreach ($shipping_line['tax_lines'] as $tax_line) {
                     $shipping_tax_values += $tax_line['price'];
                 }
             }
         }
 
-        $number_of_order_lines = count( $mp_order['line_items'] );
+        $number_of_order_lines = count($mp_order['line_items']);
 
-        $shipping_tax_values = OrderUtils::divide_currency_among_lines( $shipping_tax_values, $number_of_order_lines );
-        $shipping_price_values = OrderUtils::divide_currency_among_lines( $mp_order['total_shipping_price_set']['shop_money']['amount'], $number_of_order_lines );
+        $shipping_tax_values = OrderUtils::divide_currency_among_lines($shipping_tax_values, $number_of_order_lines);
+        $shipping_price_values = OrderUtils::divide_currency_among_lines($mp_order['total_shipping_price_set']['shop_money']['amount'], $number_of_order_lines);
 
         $note = $mp_order['note'] ?? "";
         $delivery_notes_string = "Notes: \n" . ltrim($note) . "\n";
 
-        if ( isset( $mp_order['payment_gateway_names'] ) ) {
+        if (isset($mp_order['payment_gateway_names'])) {
 
-            $payment_method = array_map( function ( $gateway ) {
+            $payment_method = array_map(function ($gateway) {
                 return $gateway ?? "";
-            }, $mp_order['payment_gateway_names'] );
+            }, $mp_order['payment_gateway_names']);
 
-            if ( !empty( $payment_method ) ) {
-                $delivery_notes_string .= "Payment Type: " . implode( ", ", $payment_method ) . "\n";
+            if (!empty($payment_method)) {
+                $delivery_notes_string .= "Payment Type: " . implode(", ", $payment_method) . "\n";
             }
         }
 
-        if($mp_order['checkout_id']) {
+        if ($mp_order['checkout_id']) {
             $delivery_notes_string .= "Checkout ID: {$mp_order['checkout_id']}\n";
         }
 
-        if($mp_order['order_number']) {
+        if ($mp_order['order_number']) {
             $delivery_notes_string .= "Order Number: {$mp_order['name']}\n";
         }
 
-        if ( isset( $mp_order['note_attributes'] ) ) {
+        if (isset($mp_order['note_attributes'])) {
             $delivery_notes_string .= "Additional Details:\n";
-            foreach($mp_order['note_attributes'] as $note_attribute){
+            foreach ($mp_order['note_attributes'] as $note_attribute) {
                 $delivery_notes_string .= "{$note_attribute['name']}: {$note_attribute['value']}\n";
             }
         }
 
-        if(isset($mp_order['payment_details'])){
+        if (isset($mp_order['payment_details'])) {
             $last_four_digits_of_cc_delimited = $this->parse_last_four_cc($mp_order['payment_details']);
             $delivery_notes_string .= "Last 4 CC digits: {$last_four_digits_of_cc_delimited}";
         }
@@ -1128,15 +1173,15 @@ class ShopifyClient
         $discount_applications = [];
         $shipping_discount_lines = 0.00;
         $shipping_discount_descriptions = [];
-        if(isset($mp_order['discount_applications'])){
-            $discount_applications = array_filter($mp_order['discount_applications'], function($discount){
+        if (isset($mp_order['discount_applications'])) {
+            $discount_applications = array_filter($mp_order['discount_applications'], function ($discount) {
                 return $discount['target_type'] === 'shipping_line';
             });
 
 
-            if($discount_applications) {
+            if ($discount_applications) {
                 $total_shipping_discount = 0.00;
-                foreach($discount_applications as $discount) {
+                foreach ($discount_applications as $discount) {
                     $shipping_discount_descriptions[] = $discount['description'];
                     $total_shipping_discount += $discount['value'];
                 }
@@ -1148,69 +1193,72 @@ class ShopifyClient
         $purchase_date = ConversionUtils::convert_date_to_utc_iso_8601($purchase_date);
 
         $normalized_order = [
-            'mp_order_number'       => $mp_order['id'],
-            'mp_alt_order_number'   => $mp_order['name'] ?? "",
-            'marketplace_name'      => 'Shopify',
-            'sales_channel'         => 'Shopify',
-            'purchase_date'         => $purchase_date,
-            'customer_email'        => $mp_order['email'] ?? "",
-            'currency'              => $mp_order['currency'] ?? "",
-            'delivery_notes'        => $delivery_notes_string,
-            'customer_full_name'    => $mp_order['billing_address']['name'] ?? '',
-            'customer_phone'        => $mp_order['billing_address']['phone'] ?? '',
-            'shipping_full_name'    => $mp_order['shipping_address']['name'] ?? '',
-            'shipping_address1'     => $mp_order['shipping_address']['address1'] ?? '',
-            'shipping_address2'     => $mp_order['shipping_address']['address2'] ?? "",
-            'shipping_city'         => $mp_order['shipping_address']['city'] ?? '',
-            'shipping_state'        => $mp_order['shipping_address']['province_code'] ?? '',
-            'shipping_postal_code'  => $mp_order['shipping_address']['zip'] ?? '',
-            'shipping_country_code' => ConversionUtils::convert_country_code_to_ISO3( $mp_order['shipping_address']['country_code'] ?? '' ),
-            'shipping_phone'        => $mp_order['shipping_address']['phone'] ?? "",
-            'order_lines'           => array_map( function ( $line_item, $key ) use ( $shipping_price_values, $shipping_tax_values, $mp_order, $shipping_discount_lines, $shipping_discount_descriptions ) {
+            'mp_order_number' => $mp_order['id'],
+            'mp_alt_order_number' => $mp_order['name'] ?? "",
+            'marketplace_name' => 'Shopify',
+            'sales_channel' => 'Shopify',
+            'purchase_date' => $purchase_date,
+            'customer_email' => $mp_order['email'] ?? "",
+            'currency' => $mp_order['currency'] ?? "",
+            'delivery_notes' => $delivery_notes_string,
+            'customer_full_name' => $mp_order['billing_address']['name'] ?? '',
+            'customer_phone' => $mp_order['billing_address']['phone'] ?? '',
+            'shipping_full_name' => $mp_order['shipping_address']['name'] ?? '',
+            'shipping_address1' => $mp_order['shipping_address']['address1'] ?? '',
+            'shipping_address2' => $mp_order['shipping_address']['address2'] ?? "",
+            'shipping_city' => $mp_order['shipping_address']['city'] ?? '',
+            'shipping_state' => $mp_order['shipping_address']['province_code'] ?? '',
+            'shipping_postal_code' => $mp_order['shipping_address']['zip'] ?? '',
+            'shipping_country_code' => ConversionUtils::convert_country_code_to_ISO3($mp_order['shipping_address']['country_code'] ?? ''),
+            'shipping_phone' => $mp_order['shipping_address']['phone'] ?? "",
+            'order_lines' => array_map(function ($line_item, $key) use ($shipping_price_values, $shipping_tax_values, $mp_order, $shipping_discount_lines, $shipping_discount_descriptions) {
                 $line_item_discount_names = [];
                 $line_item_discount_sum = 0;
 
-                array_map(function($discount) use($mp_order, &$line_item_discount_names, &$line_item_discount_sum){
+                array_map(function ($discount) use ($mp_order, &$line_item_discount_names, &$line_item_discount_sum) {
                     $line_item_discount_sum += $discount['amount'] ?? 0;
                     $discount_application_index = $discount['discount_application_index'];
 
-                    if ( isset($mp_order['discount_applications'][$discount_application_index]['code']) ){
+                    if (isset($mp_order['discount_applications'][$discount_application_index]['code'])) {
                         $line_item_discount_names[] = $mp_order['discount_applications'][$discount_application_index]['code'];
-                    }
-                    elseif ( isset($mp_order['discount_applications'][$discount_application_index]['title']) ){
+                    } elseif (isset($mp_order['discount_applications'][$discount_application_index]['title'])) {
                         $line_item_discount_names[] = $mp_order['discount_applications'][$discount_application_index]['title'];
-                    }
-                    elseif (isset($mp_order['discount_applications'][$discount_application_index]['description']) ){
+                    } elseif (isset($mp_order['discount_applications'][$discount_application_index]['description'])) {
                         $line_item_discount_names[] = $mp_order['discount_applications'][$discount_application_index]['description'];
                     }
 
                 }, $line_item['discount_allocations']);
 
                 $line_item_discount_names = implode(", ", $line_item_discount_names);
-                $shipping_discount = isset($shipping_discount_lines[$key]) ? -1 * (float) $shipping_discount_lines[$key] : 0.00;
+                $shipping_discount = isset($shipping_discount_lines[$key]) ? -1 * (float)$shipping_discount_lines[$key] : 0.00;
                 $line_item_discount = $line_item_discount_sum ? -1 * $line_item_discount_sum : 0.00;
 
                 return [
-                    'mp_line_number'          => $line_item['id'],
-                    'sku'                     => $line_item['sku'] ?? '',
-                    'quantity'                => $line_item['quantity'] ?? 0,
-                    'product_name'            => $line_item['title'] ?? '',
-                    'unit_price'              => $line_item['price'] ?? 0,
-                    'discount'                => number_format($line_item_discount,2),
-                    'discount_name'           => $line_item_discount_names,
-                    'shipping_discount'       => number_format($shipping_discount,2),
-                    'shipping_discount_name'  => implode(', ',$shipping_discount_descriptions),
-                    'shipping_price'          => number_format((float) $shipping_price_values[$key] ?? 0.00,2),
-                    'shipping_tax'            => number_format((float) $shipping_tax_values[$key] ?? 0.00,2),
-                    'shipping_method'         => $mp_order['shipping_lines'][0]['title'] ?? "",
-                    'sales_tax'               => number_format(array_sum( array_map( function ( $tax_line ) {
+                    'mp_line_number' => $line_item['id'],
+                    'sku' => $line_item['sku'] ?? '',
+                    'quantity' => $line_item['quantity'] ?? 0,
+                    'product_name' => $line_item['title'] ?? '',
+                    'unit_price' => $line_item['price'] ?? 0,
+                    'discount' => number_format($line_item_discount, 2),
+                    'discount_name' => $line_item_discount_names,
+                    'shipping_discount' => number_format($shipping_discount, 2),
+                    'shipping_discount_name' => implode(', ', $shipping_discount_descriptions),
+                    'shipping_price' => number_format((float)$shipping_price_values[$key] ?? 0.00, 2),
+                    'shipping_tax' => number_format((float)$shipping_tax_values[$key] ?? 0.00, 2),
+                    'shipping_method' => $mp_order['shipping_lines'][0]['title'] ?? "",
+                    'sales_tax' => number_format(array_sum(array_map(function ($tax_line) {
                         return $tax_line['price'];
-                    }, $line_item['tax_lines'] ) ),2),
+                    }, $line_item['tax_lines'])), 2),
                 ];
-            }, $mp_order['line_items'], range( 0, $number_of_order_lines - 1 ) ),
+            }, $mp_order['line_items'], range(0, $number_of_order_lines - 1)),
         ];
 
         return $normalized_order;
+    }
+
+    private function get_api_base_url(string $api_version = self::API_VERSION)
+    {
+        return "https://{$this->store_id}.myshopify.com/admin/api/{$api_version}";
     }
 
     /**
@@ -1219,7 +1267,7 @@ class ShopifyClient
      */
     private function get_orders_url(string $api_version = self::API_VERSION)
     {
-        return "https://{$this->store_id}.myshopify.com/admin/api/{$api_version}/orders.json";
+        return $this->get_api_base_url($api_version) . "/orders.json";
     }
 
     /**
@@ -1271,11 +1319,14 @@ class ShopifyClient
     }
 
     /**
-     * @param $response
+     * @param array $response
      * @return bool
      */
-    public function is_error_response($response)
+    public function is_error_response(array $response)
     {
+        if (isset($response['channel_response'])) {
+            $response = $response['channel_response'];
+        }
         $http_response = $response['response_code'] ?? 0;
         return $http_response < 200 || $http_response > 300;
     }

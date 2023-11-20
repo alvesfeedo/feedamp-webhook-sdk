@@ -9,6 +9,7 @@ servers:
   - url: 'https://something.com'
 tags:
   - name: Orders
+  - name:  Products
 paths:
   /place_order:
     post:
@@ -87,7 +88,8 @@ paths:
             type: array
             items:
               type: integer
-            minLength: 1
+            minItems: 1
+            maxItems: 250
 
       responses:
         '200':
@@ -174,6 +176,59 @@ paths:
                     description: The results of the last request made to the channel
                     oneOf:
                       - $ref: "#/components/schemas/ChannelHttpErrorResponse"
+  /inventory_info:
+    get:
+      tags:
+        - Products
+      summary: Get quantity info for requested variant ids
+      description: Get inventory and direct url for requested variant ids
+      operationId: getInventory
+      parameters:
+        - name: store-id
+          description: The id identifies the shop instance
+          required: true
+          in: header
+          schema:
+            type: string
+            minLength: 1
+        - name: token
+          description: The authorization token for the shop
+          required: true
+          in: header
+          schema:
+            type: string
+            minLength: 1
+        - name: variant_ids
+          description: A array (comma delimited list) of channel order id to retrieve status information
+          in: query
+          required: true
+          explode: false
+          schema:
+            type: array
+            items:
+              type: integer
+            minItems: 1
+            maxItems: 250
+
+      responses:
+        '200':
+          description: The request to the ecommerce platform was made
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryInfoSuccessResponse'
+        '400':
+          description: The request sent to this api failed to validate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestValidationResponse'
+        '502':
+          description: The request to the ecommerce platform failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelReportedError'
 
   /orders:
     get:
@@ -743,6 +798,42 @@ components:
       required:
         - refunds
         - page_limit_reached
+
+    InventoryInfoSuccessResponse:
+      description: The response from a call to get invertory information for a list of variant ids
+      type: object
+      properties:
+        failed_ids:
+          description: List of variant id that no status information was able to be retrieved
+          type: array
+          items:
+            type: integer
+        inventory:
+          description: Inventory information
+          type: object
+          properties:
+            variant_id:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                product_id:
+                  type: string
+
+                url:
+                  type: string
+              required:
+                - quantity
+          example:
+            "VARIANT_ID_123": {
+              "quantity": 1,
+              "product_id": "PRODUCT_ID",
+              "url": "https://admin.shopify.com/store/MY_STORE_ID/products/PRODUCT_ID/variants/VARIANT_ID",
+            }
+        channel_response:
+          $ref: "#/components/schemas/ChannelSuccessResponse"
+      required:
+        - channel_response
 
     OrdersSuccessResponse:
       type: object
