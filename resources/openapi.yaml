@@ -603,10 +603,26 @@ components:
                             type: integer
                           shipped_date:
                             type: string
+                          carrier:
+                            type: string
                           tracking_number:
+                            type: string
+                          tracking_url:
+                            type: string
+                          return_tracking_number:
                             type: string
                       total_fulfilled:
                         type: integer
+                example:
+                  "ORDER_LINE_ID_123": {
+                    "quantity_shipped": 1,
+                    "shipped_date": "2023-11-17T07:38:17-08:00",
+                    "carrier": "Acme Delivery INC",
+                    "tracking_number": "TEST123",
+                    "tracking_url": "http://acme-delivery-inc.xyz?id=TEST123",
+                    "return_tracking_number": ""
+                  }
+
               cancellations:
                 description: Key value pairs of order line ids and cancellation information
                 type: object
@@ -619,6 +635,11 @@ components:
                       cancellation_reason:
                         type: string
                         enum: ['customer_cancelled', 'fraud', 'out_of_stock', 'other']
+                example:
+                  "ORDER_LINE_ID_456": {
+                    "quantity_cancelled": 1,
+                    "cancellation_reason": "other"
+                  }
         channel_response:
           $ref: "#/components/schemas/ChannelSuccessResponse"
       required:
@@ -646,10 +667,10 @@ components:
                   refund_line_id:
                     type: string
                   refunds:
-                    description: The Shopify Order's refunds property
+                    description: The value of the refunds property in the order data returned by the channel
                     type: object
                   order_lines:
-                    description: The Shopify Order's line_items
+                    description: The value of the line_items property in the order data returned by the channel
                     type: object
                 required:
                   - partial_refund_compatible
