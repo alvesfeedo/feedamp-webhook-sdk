@@ -230,24 +230,24 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
     $client = new HttpClient();
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
-    $raw_response = $shopify_client->get_refunds($start_date, $end_date);
+    $refunds = $shopify_client->get_refunds($start_date, $end_date);
 
-    $failed_request = $shopify_client->is_error_response($raw_response);
-    $orders = json_decode($raw_response['response_body'] ?? '', true);
+    $failed_request = isset($refunds['channel_response']);
 
-    if ($failed_request || !$orders) {
+    $order_count = $refunds['order_count'];
+
+    if ($failed_request) {
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
-            "channel_response" => $raw_response
+            "error" => $refunds['error'],
+            "channel_response" => $refunds['channel_response']
         ]));
         return $response;
     }
 
-    $order_statuses = $shopify_client->parse_order_statuses_response($orders);
     $response = $response->withStatus(200);
     $response->getBody()->write(json_encode([
-        "statuses" => $order_statuses,
-        "channel_response" => $raw_response
+        "refunds" =>$refunds["refunds"],
     ]));
     return $response;
 

@@ -782,7 +782,8 @@ class ShopifyClient
 
     public function get_refunds(string $start_date, string $end_date)
     {
-        $response = [
+        $refunds = [
+            'order_count' => 0,
             'refunds' => [],
             'page_limit_reached' => false
         ];
@@ -793,32 +794,36 @@ class ShopifyClient
         $end_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($end_date));
 
         $order_count = 0;
-        $order_refunds = [];
 
         foreach ($financial_statuses as $status) {
             $results = $this->get_order_count($status, $start_date_utc, $end_date_utc);
             if ($this->is_error_response($results)) {
                 return [
+                    'order_count' => 0,
                     'error' => 'Request to get the number of orders with refunds was not successful',
                     'channel_response' => $results
                 ];
             }
-            $response = json_decode($results['response_body'], true);
-            if (!$response) {
+            $orders = json_decode($results['response_body'], true);
+            if (!$orders) {
                 return [
+                    'order_count' => 0,
                     'error' => 'Invalid json returned in get order count response',
                     'channel_response' => $results
                 ];
             }
-            $order_count += (int)$response['count'];
+            $order_count += (int)$orders['count'];
         }
+
         if ($order_count <= 0) {
             return [
-                'channel_response' => $results
+                'order_count' => $order_count,
             ];
         }
+
         $num_orders_so_far = 0;
 
+        $refunds['order_count'] = $order_count;
         foreach ($financial_statuses as $financial_status) {
             $next_page_params = [];
             $page_cursor_limit = 0;
@@ -834,6 +839,7 @@ class ShopifyClient
 
                 if ($this->is_error_response($response)) {
                     return [
+                        'order_count' => $order_count,
                         'error' => 'Request to get orders was not successful',
                         'channel_response' => $response
                     ];
@@ -842,6 +848,7 @@ class ShopifyClient
                 $refunded_orders = json_decode($response['response_body'], true);
                 if ($refunded_orders == false) {
                     return [
+                        'order_count' => $order_count,
                         'error' => 'Invalid json returned in get orders response',
                         'channel_response' => $response
                     ];
@@ -876,7 +883,7 @@ class ShopifyClient
                             if ($refund_line_item['restock_type'] == 'cancel') {
                                 continue;
                             }
-                            $response['refunds'][] = [
+                            $refunds['refunds'][] = [
                                 "id" => $shopify_refund['id'],
                                 "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
                                 "refund" => [
@@ -891,7 +898,7 @@ class ShopifyClient
 
                         if (empty($shopify_refund['refund_line_items'])) {
                             foreach ($shopify_order['line_items'] as $order_line_item) {
-                                $response['refunds'][] = [
+                                $refunds['refunds'][] = [
                                     "id" => $shopify_refund['id'],
                                     "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
                                     "refund" => [
@@ -911,17 +918,67 @@ class ShopifyClient
             } while ($next_page_exists && $page_cursor_limit < self::MAX_REFUND_PAGE_LIMIT);
 
             if ($page_cursor_limit >= self::MAX_REFUND_PAGE_LIMIT) {
-                $results['page_limit_reached'] = true;
+                $refunds['page_limit_reached'] = true;
             }
         }
 
-        return $results;
+        return $refunds;
 
+    }
+
+    /**
+     * @param array $shopify_order
+     * @return bool
+     */
+    private function order_contains_cancellations(array $shopify_order): bool
+    {
+        $order_has_cancellations = false;
+
+        //if cancelled_at is set, the order was fully cancelled and all refunds will be ignored
+        if(!empty($shopify_order['cancelled_at'])) {
+            $order_has_cancellations = true;
+        }
+
+        //find all fulfillments
+        $line_item_fulfillments_map = [];
+        foreach ( $shopify_order['fulfillments'] as $fulfillment ) {
+            foreach ( $fulfillment['line_items'] as $line_item ) {
+                $line_item_id = $line_item['id'];
+                if (!key_exists($line_item_id, $line_item_fulfillments_map)) {
+                    $line_item_fulfillments_map[$line_item_id] = [
+                        'total_fulfilled'	=> 0,
+                        'total_cancelled'	=> 0,
+                    ];
+                }
+                $line_item_fulfillments_map[$line_item_id]['total_fulfilled'] += $line_item['quantity'];
+            }
+        }
+
+        //missing fulfillments are assumed to be cancellations
+        //any cancellations present will result in no refunds being processed
+        foreach ( $shopify_order['line_items'] as $line_item ) {
+            $line_item_id = $line_item['id'];
+
+            if(key_exists($line_item_id, $line_item_fulfillments_map)) {
+                $total_fulfilled = $line_item_fulfillments_map[$line_item_id]['total_fulfilled'];
+            }
+            else {
+                $total_fulfilled = 0;
+            }
+
+            $line_item_fulfillments_map[$line_item_id]['total_cancelled'] = $line_item['quantity'] - $total_fulfilled;
+
+            if ($line_item_fulfillments_map[$line_item_id]['total_cancelled'] > 0){
+                $order_has_cancellations = true;
+            }
+        }
+
+        return $order_has_cancellations;
     }
 
     private function get_order_count(string $financial_status, string $start_date, string $end_date)
     {
-        $url = $this->get_orders_url();
+        $url = $this->get_api_base_url()."/orders/count.json";
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
