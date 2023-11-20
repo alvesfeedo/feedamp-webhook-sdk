@@ -107,7 +107,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
     $validation_errors = [];
     $query_params = $request->getQueryParams();
     $ids = $query_params['channel_order_ids'] ?? "";
-    $validate_ids = explode(',', $ids);
+    $channel_order_ids = explode(',', $ids);
 
     if (!$store_id) {
         $validation_errors[] = [
@@ -122,7 +122,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
         ];
     }
 
-    if (!$validate_ids) {
+    if (!$channel_order_ids) {
         $validation_errors[] = [
             [
                 "code" => "MISSING_QUERY_PARAM",
@@ -130,7 +130,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
             ]
         ];
     }
-    if (count($validate_ids) > 250) {
+    if (count($channel_order_ids) > 250) {
         $validation_errors[] = [
             [
                 "code" => "INVALID_QUERY_PARAM",
@@ -148,7 +148,8 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
     $client = new HttpClient();
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
-    $raw_response = $shopify_client->get_order_statuses($ids);
+    $status_response = $shopify_client->get_order_statuses($channel_order_ids);
+    $raw_response = $status_response['response'];
 
     $failed_request = $shopify_client->is_error_response($raw_response);
     $orders = json_decode($raw_response['response_body'] ?? '', true);
@@ -156,18 +157,22 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
     if ($failed_request || !$orders) {
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
-            "failed_ids" => $validate_ids,
+            "failed_ids" => $channel_order_ids,
             "channel_response" => $raw_response
         ]));
         return $response;
     }
 
+
     $order_statuses = $shopify_client->parse_order_statuses_response($orders);
     $response = $response->withStatus(200);
-    $response->getBody()->write(json_encode([
+    $return_response = [
         "statuses" => $order_statuses,
+        "failed_ids" => $status_response['failed_ids'],
         "channel_response" => $raw_response
-    ]));
+    ];
+
+    $response->getBody()->write(json_encode($return_response));
     return $response;
 
 });

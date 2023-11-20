@@ -501,25 +501,41 @@ class ShopifyClient
     }
 
     /**
-     * @param string $ids
+     * @param array $ids
      * @return array
      */
-    public function get_order_statuses(string $ids)
+    public function get_order_statuses(array $ids)
     {
-        $num_ids = count($ids);
         $url = $this->get_orders_url();
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
-            'ids' => $ids,
-            'limit' => $num_ids
+            'ids' => implode(',',$ids),
+            'limit' => self::MAX_ORDER_BATCH_SIZE
         ];
 
         $options = [
             'headers' => $headers,
             'query' => $query
         ];
-        return $this->get($url, $options);
+        $response = $this->get($url, $options);
+        $orders = json_decode($response['response_body'] ?? '', true);
+        if($this->is_error_response($response) || !$orders) {
+            return [
+                'response' => $response,
+                'failed_ids' => $ids
+            ];
+        }
+
+        $successfully_retrieved = [];
+        foreach($orders['orders'] as $order) {
+            $successfully_retrieved[] = $order['id'];
+        }
+
+        return [
+            'response' => $response,
+            'failed_ids' => array_values(array_diff($ids, $successfully_retrieved)),
+        ];
     }
 
     public function parse_order_statuses_response($orders)
