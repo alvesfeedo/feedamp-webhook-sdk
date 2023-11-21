@@ -91,7 +91,7 @@ $app->post('/place_order', function (Request $request, Response $response, $args
     } else {
         $response = $response->withStatus(200);
     }
-    $response->getBody()->write(json_encode(["channel_response" => $raw_response]));
+    $response->getBody()->write(json_encode(["platform_response" => $raw_response]));
     return $response;
 });
 
@@ -158,7 +158,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
             "failed_ids" => $store_order_ids,
-            "channel_response" => $raw_response
+            "platform_response" => $raw_response
         ]));
         return $response;
     }
@@ -169,7 +169,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
     $return_response = [
         "statuses" => $order_statuses,
         "failed_ids" => $status_response['failed_ids'],
-        "channel_response" => $raw_response
+        "platform_response" => $raw_response
     ];
 
     $response->getBody()->write(json_encode($return_response));
@@ -232,7 +232,7 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
 
     $refunds = $shopify_client->get_refunds($start_date, $end_date);
 
-    $failed_request = isset($refunds['channel_response']);
+    $failed_request = isset($refunds['platform_response']);
 
     $order_count = $refunds['order_count'];
 
@@ -240,7 +240,7 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
             "error" => $refunds['error'],
-            "channel_response" => $refunds['channel_response']
+            "platform_response" => $refunds['platform_response']
         ]));
         return $response;
     }
@@ -308,13 +308,13 @@ $app->get('/inventory_info', function (Request $request, Response $response, $ar
 
     $inventory = $shopify_client->get_inventory_info($variant_ids);
 
-    $failed_request = isset($inventory['channel_response']);
+    $failed_request = isset($inventory['platform_response']);
     if ($failed_request) {
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
             "failed_ids" => $variant_ids,
             "error" => $inventory['error'],
-            "channel_response" => $inventory['channel_response']
+            "platform_response" => $inventory['platform_response']
         ]));
         return $response;
     }

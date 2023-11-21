@@ -801,7 +801,7 @@ class ShopifyClient
                 return [
                     'order_count' => 0,
                     'error' => 'Request to get the number of orders with refunds was not successful',
-                    'channel_response' => $results
+                    'platform_response' => $results
                 ];
             }
             $orders = json_decode($results['response_body'], true);
@@ -809,7 +809,7 @@ class ShopifyClient
                 return [
                     'order_count' => 0,
                     'error' => 'Invalid json returned in get order count response',
-                    'channel_response' => $results
+                    'platform_response' => $results
                 ];
             }
             $order_count += (int)$orders['count'];
@@ -841,7 +841,7 @@ class ShopifyClient
                     return [
                         'order_count' => $order_count,
                         'error' => 'Request to get orders was not successful',
-                        'channel_response' => $response
+                        'platform_response' => $response
                     ];
                 }
 
@@ -850,7 +850,7 @@ class ShopifyClient
                     return [
                         'order_count' => $order_count,
                         'error' => 'Invalid json returned in get orders response',
-                        'channel_response' => $response
+                        'platform_response' => $response
                     ];
                 }
 
@@ -1089,22 +1089,22 @@ class ShopifyClient
             if ($this->is_error_response($inventory_response)) {
                 return [
                     'error' => 'Request to get inventory was not successful',
-                    'channel_response' => $inventory_response
+                    'platform_response' => $inventory_response
                 ];
             }
 
             $variant_info = json_decode($inventory_response['response_body'], true);
-
             if (!$variant_info) {
                 return [
                     'error' => 'Invalid json returned in get inventory response',
-                    "channel_response" => $inventory_response
+                    "platform_response" => $inventory_response
                 ];
             }
 
             $inventory_qty = $variant_info['variant']['inventory_quantity'] ?? 0;
             $info = [
-                'stock' => $inventory_qty
+                'stock' => $inventory_qty,
+                'sku' => $variant_info['variant']['sku'] ?? '',
             ];
             $product_id = $variant_info['variant']['product_id'] ?? '';
             if ($product_id) {
@@ -1146,14 +1146,14 @@ class ShopifyClient
             if ($this->is_error_response($orders_response)) {
                 return [
                     'error' => 'Request to get orders was not successful',
-                    "channel_response" => $orders_response
+                    "platform_response" => $orders_response
                 ];
             }
             $orders = json_decode($orders_response['response_body'], true);
             if (!$orders) {
                 return [
                     'error' => 'Invalid json returned in get orders response',
-                    "channel_response" => $orders_response
+                    "platform_response" => $orders_response
                 ];
             }
 
@@ -1410,8 +1410,8 @@ class ShopifyClient
      */
     public function is_error_response(array $response)
     {
-        if (isset($response['channel_response'])) {
-            $response = $response['channel_response'];
+        if (isset($response['platform_response'])) {
+            $response = $response['platform_response'];
         }
         $http_response = $response['response_code'] ?? 0;
         return $http_response < 200 || $http_response > 300;

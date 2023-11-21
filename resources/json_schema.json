@@ -259,7 +259,7 @@
                       "type": "string",
                       "example": "Request to get the number of orders with refunds was not successful"
                     },
-                    "channel_response": {
+                    "platform_response": {
                       "description": "The results of the last request made to the platform",
                       "oneOf": [
                         {
@@ -428,7 +428,7 @@
                       "type": "string",
                       "example": "Request to get the number of orders with refunds was not successful"
                     },
-                    "channel_response": {
+                    "platform_response": {
                       "description": "The results of the last request made to the platform",
                       "oneOf": [
                         {
@@ -1004,12 +1004,12 @@
         "description": "The response from a call to the place order endpoint",
         "type": "object",
         "properties": {
-          "channel_response": {
+          "platform_response": {
             "$ref": "#\/components\/schemas\/SuccessResponse"
           }
         },
         "required": [
-          "channel_response"
+          "platform_response"
         ]
       },
       "OrderStatuesSuccessResponse": {
@@ -1112,12 +1112,12 @@
               }
             }
           },
-          "channel_response": {
+          "platform_response": {
             "$ref": "#\/components\/schemas\/SuccessResponse"
           }
         },
         "required": [
-          "channel_response"
+          "platform_response"
         ]
       },
       "OrderRefundsSuccessResponse": {
@@ -1185,6 +1185,9 @@
                   "quantity": {
                     "type": "integer"
                   },
+                  "sku_id": {
+                    "type": "string"
+                  },
                   "product_id": {
                     "type": "string"
                   },
@@ -1200,17 +1203,18 @@
             "example": {
               "VARIANT_ID_123": {
                 "quantity": 1,
+                "sku": "222222",
                 "product_id": "PRODUCT_ID",
                 "url": "https:\/\/admin.shopify.com\/store\/MY_STORE_ID\/products\/PRODUCT_ID\/variants\/VARIANT_ID"
               }
             }
           },
-          "channel_response": {
+          "platform_response": {
             "$ref": "#\/components\/schemas\/SuccessResponse"
           }
         },
         "required": [
-          "channel_response"
+          "platform_response"
         ]
       },
       "OrdersSuccessResponse": {
@@ -1428,19 +1432,19 @@
         "description": "The response from a call to the place order endpoint",
         "type": "object",
         "properties": {
-          "channel_response": {
+          "platform_response": {
             "$ref": "#\/components\/schemas\/SuccessResponse"
           }
         },
         "required": [
-          "channel_response"
+          "platform_response"
         ]
       },
       "ReportedError": {
         "description": "The response from a call to the place order endpoint",
         "type": "object",
         "properties": {
-          "channel_response": {
+          "platform_response": {
             "type": "object",
             "oneOf": [
               {
@@ -1453,7 +1457,7 @@
           }
         },
         "required": [
-          "channel_response"
+          "platform_response"
         ]
       },
       "SuccessResponse": {
