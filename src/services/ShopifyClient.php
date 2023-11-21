@@ -885,14 +885,12 @@ class ShopifyClient
                             }
                             $refunds['refunds'][] = [
                                 "id" => $shopify_refund['id'],
-                                "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
-                                "refund" => [
-                                    "partial_refund_compatible" => true,
-                                    "refund_id" => $shopify_refund['id'],
-                                    "refund_line_id" => $refund_line_item['id'],
-                                    "refunds" => $shopify_refunds,
-                                    "order_lines" => $shopify_order['line_items'],
-                                ]
+                                "refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
+                                "partial_refund_compatible" => true,
+                                "refund_id" => $shopify_refund['id'],
+                                "refund_line_id" => $refund_line_item['id'],
+                                "refunds" => $shopify_refunds,
+                                "order_lines" => $shopify_order['line_items'],
                             ];
                         }
 
@@ -900,14 +898,12 @@ class ShopifyClient
                             foreach ($shopify_order['line_items'] as $order_line_item) {
                                 $refunds['refunds'][] = [
                                     "id" => $shopify_refund['id'],
-                                    "channel_refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
-                                    "refund" => [
-                                        "partial_refund_compatible" => true,
-                                        "refund_id" => $shopify_refund['id'],
-                                        "refund_line_id" => $order_line_item['id'],
-                                        "refunds" => $shopify_refunds,
-                                        "order_lines" => $shopify_order['line_items'],
-                                    ]
+                                    "refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
+                                    "partial_refund_compatible" => true,
+                                    "refund_id" => $shopify_refund['id'],
+                                    "refund_line_id" => $order_line_item['id'],
+                                    "refunds" => $shopify_refunds,
+                                    "order_lines" => $shopify_order['line_items'],
                                 ];
                             }
                         }

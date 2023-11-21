@@ -106,8 +106,8 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
 
     $validation_errors = [];
     $query_params = $request->getQueryParams();
-    $ids = $query_params['channel_order_ids'] ?? "";
-    $channel_order_ids = explode(',', $ids);
+    $ids = $query_params['store_order_ids'] ?? "";
+    $store_order_ids = explode(',', $ids);
 
     if (!$store_id) {
         $validation_errors[] = [
@@ -122,19 +122,19 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
         ];
     }
 
-    if (!$channel_order_ids) {
+    if (!$ids) {
         $validation_errors[] = [
             [
                 "code" => "MISSING_QUERY_PARAM",
-                "message" => "Missing required channel_order_ids"
+                "message" => "Missing required store_order_ids"
             ]
         ];
     }
-    if (count($channel_order_ids) > 250) {
+    if (count($store_order_ids) > 250) {
         $validation_errors[] = [
             [
                 "code" => "INVALID_QUERY_PARAM",
-                "message" => "Number of items in channel_order_ids > 250"
+                "message" => "Number of items in store_order_ids > 250"
             ]
         ];
     }
@@ -148,7 +148,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
     $client = new HttpClient();
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
-    $status_response = $shopify_client->get_order_statuses($channel_order_ids);
+    $status_response = $shopify_client->get_order_statuses($store_order_ids);
     $raw_response = $status_response['response'];
 
     $failed_request = $shopify_client->is_error_response($raw_response);
@@ -157,7 +157,7 @@ $app->get('/order_statuses', function (Request $request, Response $response, $ar
     if ($failed_request || !$orders) {
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
-            "failed_ids" => $channel_order_ids,
+            "failed_ids" => $store_order_ids,
             "channel_response" => $raw_response
         ]));
         return $response;
