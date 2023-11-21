@@ -803,11 +803,6 @@ components:
       description: The response from a call to get invertory information for a list of variant ids
       type: object
       properties:
-        failed_ids:
-          description: List of variant id that no status information was able to be retrieved
-          type: array
-          items:
-            type: integer
         inventory:
           description: Inventory information
           type: object

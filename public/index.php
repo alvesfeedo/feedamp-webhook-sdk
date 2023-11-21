@@ -247,7 +247,7 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
 
     $response = $response->withStatus(200);
     $response->getBody()->write(json_encode([
-        "refunds" =>$refunds["refunds"],
+        "refunds" => $refunds["refunds"],
     ]));
     return $response;
 
@@ -265,7 +265,7 @@ $app->get('/inventory_info', function (Request $request, Response $response, $ar
     $validation_errors = [];
     $query_params = $request->getQueryParams();
     $ids = $query_params['variant_ids'] ?? "";
-    $validate_ids = explode(',', $ids);
+    $variant_ids = explode(',', $ids);
 
     if (!$store_id) {
         $validation_errors[] = [
@@ -280,7 +280,7 @@ $app->get('/inventory_info', function (Request $request, Response $response, $ar
         ];
     }
 
-    if (!$validate_ids) {
+    if (!$variant_ids) {
         $validation_errors[] = [
             [
                 "code" => "MISSING_QUERY_PARAM",
@@ -288,7 +288,7 @@ $app->get('/inventory_info', function (Request $request, Response $response, $ar
             ]
         ];
     }
-    if (count($validate_ids) > 250) {
+    if (count($variant_ids) > 250) {
         $validation_errors[] = [
             [
                 "code" => "INVALID_QUERY_PARAM",
@@ -306,25 +306,22 @@ $app->get('/inventory_info', function (Request $request, Response $response, $ar
     $client = new HttpClient();
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
-    $raw_response = $shopify_client->get_order_statuses($ids);
+    $inventory = $shopify_client->get_inventory_info($variant_ids);
 
-    $failed_request = $shopify_client->is_error_response($raw_response);
-    $orders = json_decode($raw_response['response_body'] ?? '', true);
-
-    if ($failed_request || !$orders) {
+    $failed_request = isset($inventory['channel_response']);
+    if ($failed_request) {
         $response = $response->withStatus(502);
         $response->getBody()->write(json_encode([
-            "failed_ids" => $validate_ids,
-            "channel_response" => $raw_response
+            "failed_ids" => $variant_ids,
+            "error" => $inventory['error'],
+            "channel_response" => $inventory['channel_response']
         ]));
         return $response;
     }
 
-    $order_statuses = $shopify_client->parse_order_statuses_response($orders);
     $response = $response->withStatus(200);
     $response->getBody()->write(json_encode([
-        "statuses" => $order_statuses,
-        "channel_response" => $raw_response
+        "inventory" => $inventory['inventory'],
     ]));
     return $response;
 

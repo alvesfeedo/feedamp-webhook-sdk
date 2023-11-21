@@ -443,9 +443,9 @@ class ShopifyClient
     {
         $response = $this->client_place_order($payload);
 
-        if($this->is_error_response($response)){
-            $invalid_phone_error_detected = strpos($response['response_body'],'Phone is invalid');
-            if($invalid_phone_error_detected) {
+        if ($this->is_error_response($response)) {
+            $invalid_phone_error_detected = strpos($response['response_body'], 'Phone is invalid');
+            if ($invalid_phone_error_detected) {
                 unset($payload['order']['phone']);
                 return $this->client_place_order($payload);
             }
@@ -510,7 +510,7 @@ class ShopifyClient
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
-            'ids' => implode(',',$ids),
+            'ids' => implode(',', $ids),
             'limit' => self::MAX_ORDER_BATCH_SIZE
         ];
 
@@ -520,7 +520,7 @@ class ShopifyClient
         ];
         $response = $this->get($url, $options);
         $orders = json_decode($response['response_body'] ?? '', true);
-        if($this->is_error_response($response) || !$orders) {
+        if ($this->is_error_response($response) || !$orders) {
             return [
                 'response' => $response,
                 'failed_ids' => $ids
@@ -528,7 +528,7 @@ class ShopifyClient
         }
 
         $successfully_retrieved = [];
-        foreach($orders['orders'] as $order) {
+        foreach ($orders['orders'] as $order) {
             $successfully_retrieved[] = $order['id'];
         }
 
@@ -935,19 +935,19 @@ class ShopifyClient
         $order_has_cancellations = false;
 
         //if cancelled_at is set, the order was fully cancelled and all refunds will be ignored
-        if(!empty($shopify_order['cancelled_at'])) {
+        if (!empty($shopify_order['cancelled_at'])) {
             $order_has_cancellations = true;
         }
 
         //find all fulfillments
         $line_item_fulfillments_map = [];
-        foreach ( $shopify_order['fulfillments'] as $fulfillment ) {
-            foreach ( $fulfillment['line_items'] as $line_item ) {
+        foreach ($shopify_order['fulfillments'] as $fulfillment) {
+            foreach ($fulfillment['line_items'] as $line_item) {
                 $line_item_id = $line_item['id'];
                 if (!key_exists($line_item_id, $line_item_fulfillments_map)) {
                     $line_item_fulfillments_map[$line_item_id] = [
-                        'total_fulfilled'	=> 0,
-                        'total_cancelled'	=> 0,
+                        'total_fulfilled' => 0,
+                        'total_cancelled' => 0,
                     ];
                 }
                 $line_item_fulfillments_map[$line_item_id]['total_fulfilled'] += $line_item['quantity'];
@@ -956,19 +956,18 @@ class ShopifyClient
 
         //missing fulfillments are assumed to be cancellations
         //any cancellations present will result in no refunds being processed
-        foreach ( $shopify_order['line_items'] as $line_item ) {
+        foreach ($shopify_order['line_items'] as $line_item) {
             $line_item_id = $line_item['id'];
 
-            if(key_exists($line_item_id, $line_item_fulfillments_map)) {
+            if (key_exists($line_item_id, $line_item_fulfillments_map)) {
                 $total_fulfilled = $line_item_fulfillments_map[$line_item_id]['total_fulfilled'];
-            }
-            else {
+            } else {
                 $total_fulfilled = 0;
             }
 
             $line_item_fulfillments_map[$line_item_id]['total_cancelled'] = $line_item['quantity'] - $total_fulfilled;
 
-            if ($line_item_fulfillments_map[$line_item_id]['total_cancelled'] > 0){
+            if ($line_item_fulfillments_map[$line_item_id]['total_cancelled'] > 0) {
                 $order_has_cancellations = true;
             }
         }
@@ -978,7 +977,7 @@ class ShopifyClient
 
     private function get_order_count(string $financial_status, string $start_date, string $end_date)
     {
-        $url = $this->get_api_base_url()."/orders/count.json";
+        $url = $this->get_api_base_url() . "/orders/count.json";
         $headers = $this->get_headers();
         $query = [
             'status' => 'any',
@@ -1090,20 +1089,23 @@ class ShopifyClient
             'inventory' => []
         ];
         foreach ($variant_ids as $variant_id) {
-            $response = $this->get_variant_product($variant_id);
-            if ($this->is_error_response($response)) {
+            $inventory_response = $this->get_variant_product($variant_id);
+            if ($this->is_error_response($inventory_response)) {
                 return [
                     'error' => 'Request to get inventory was not successful',
-                    'channel_response' => $response
+                    'channel_response' => $inventory_response
                 ];
             }
-            $inventory = json_decode($response['request_body'], true);
-            if (!$inventory) {
+
+            $variant_info = json_decode($inventory_response['response_body'], true);
+
+            if (!$variant_info) {
                 return [
                     'error' => 'Invalid json returned in get inventory response',
-                    "channel_response" => $response
+                    "channel_response" => $inventory_response
                 ];
             }
+
             $inventory_qty = $variant_info['variant']['inventory_quantity'] ?? 0;
             $info = [
                 'stock' => $inventory_qty
@@ -1115,6 +1117,7 @@ class ShopifyClient
             }
             $response['inventory'][$variant_id] = $info;
         }
+        return $response;
     }
 
     private function get_variant_product($variant_id)
