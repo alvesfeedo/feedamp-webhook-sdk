@@ -205,9 +205,9 @@
           },
           {
             "name": "start_date",
-            "description": "Orders updated on or after",
+            "description": "Orders updated on or after this time. This field is required if the cursor parameter is not sent.",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "date-time",
@@ -216,12 +216,32 @@
           },
           {
             "name": "end_date",
-            "description": "Orders updated on or before",
+            "description": "Retrieve refunds for orders updated on or before this time, This field is required if the cursor parameter is not sent.",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "format": "date-time",
+              "example": 1577836800
+            }
+          },
+          {
+            "name": "app_id",
+            "description": "Restrict orders with refunds to only those attributed to the specified app_id. 'Current' can be used to specify the app making the curent request.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "Current"
+            }
+          },
+          {
+            "name": "cursor",
+            "description": "A cursor retrieved by the platform to get the next set of refunds. When this query parameter is used, any other query parameters that also sent in the request are ignored.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
               "example": 1577836800
             }
           }
@@ -1161,14 +1181,13 @@
               ]
             }
           },
-          "page_limit_reached": {
-            "description": "This field indicates if the max allowed number of fetches has been reached.  This warning indicates not all refunds have been retrieved",
+          "cursor": {
+            "description": "If this field is set there are additional pages to get. The client will need to make additional",
             "type": "boolean"
           }
         },
         "required": [
-          "refunds",
-          "page_limit_reached"
+          "refunds"
         ]
       },
       "InventoryInfoSuccessResponse": {

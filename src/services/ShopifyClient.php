@@ -26,6 +26,7 @@ class ShopifyClient
         self::MARKETPLACE_ORDER_NUMBER
     ];
 
+    const FINANCIAL_STATUSES = ['partially_refunded', 'refunded'];
     private string $store_id;
     private string $access_token;
     private HttpClient $client;
@@ -780,23 +781,158 @@ class ShopifyClient
         return $line_item_id_to_quantity_cancelled_map;
     }
 
-    public function get_refunds(string $start_date, string $end_date)
+    /**
+     * @param string $start_date
+     * @param string $end_date
+     * @param string $app_id
+     * @param string $cursor
+     * @return array|int[]
+     */
+    public function get_refunds(string $start_date, string $end_date, string $app_id, string $cursor)
     {
         $refunds = [
-            'order_count' => 0,
+            'has_orders' => false,
             'refunds' => [],
-            'page_limit_reached' => false
         ];
+        $start_date_utc = null;
+        $end_date_utc = null;
 
-        $financial_statuses = ['partially_refunded', 'refunded'];
+        if (!$cursor) {
+            $start_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($start_date));
+            $end_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($end_date));
 
-        $start_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($start_date));
-        $end_date_utc = gmdate('Y-m-d\TH:i:s\Z', strtotime($end_date));
+            $order_count_info = $this->get_number_of_orders($start_date_utc, $end_date);
+            if (!$order_count_info['order_count']) {
+                unset($refunds['order_count']);
+                return $order_count_info;
+            }
+        }
 
+        $num_orders_so_far = 0;
+        if (!$cursor) {
+            $financial_status = self::FINANCIAL_STATUSES[0];
+            $page_info = null;
+            $limit = null;
+            $index = 0;
+        } else {
+            $resume = json_decode(base64_decode($cursor), true);
+            $financial_status = $resume['financial_status'];
+            $page_info = $resume['page_info'];
+            $limit = $resume['limit'];
+            $index = array_search($financial_status, self::FINANCIAL_STATUSES);
+        }
+
+        while (true) {
+            $response = $page_info ?
+                $this->get_with_cursor_pagination([
+                    "limit" => $limit,
+                    "page_info" => $page_info
+                ])
+                : $this->get_raw_refunds($start_date_utc, $end_date_utc, $financial_status, $app_id);
+
+            if ($this->is_error_response($response)) {
+                return [
+                    'error' => 'Request to get orders was not successful',
+                    'platform_response' => $response
+                ];
+            }
+
+            $next_page_params = $this->extract_next_page_params($response);
+
+            $refunded_orders = json_decode($response['response_body'], true);
+            if ($refunded_orders == false) {
+                return [
+                    'error' => 'Invalid json returned in get orders response',
+                    'platform_response' => $response
+                ];
+            }
+
+            $shopify_orders = $refunded_orders['orders'];
+
+            if (!count($shopify_orders)) {
+                $index++;
+                if ($index >= count(self::FINANCIAL_STATUSES)) {
+                    return $response;
+                }
+                $financial_status = self::FINANCIAL_STATUSES[$index];
+                $page_info = null;
+                $limit = null;
+                continue;
+            }
+
+            $orders_in_batch = count($shopify_orders);
+            $num_orders_so_far += $orders_in_batch;
+
+            foreach ($shopify_orders as $shopify_order) {
+                if ($this->order_contains_cancellations($shopify_order)) {
+                    // If an order contains cancellations, we ignore any incoming refunds attached to that order
+                    // We are unable to process refunds for orders that have already been cancelled
+                    continue;
+                }
+
+                $shopify_refunds = $shopify_order['refunds'];
+
+                foreach ($shopify_refunds as $shopify_refund) {
+                    if (empty($shopify_refund['transactions'])) {
+                        continue;
+                    }
+
+                    foreach ($shopify_refund['refund_line_items'] as $refund_line_item) {
+                        if ($refund_line_item['restock_type'] == 'cancel') {
+                            continue;
+                        }
+                        $refunds['refunds'][] = [
+                            "id" => $shopify_refund['id'],
+                            "refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
+                            "partial_refund_compatible" => true,
+                            "refund_id" => $shopify_refund['id'],
+                            "refund_line_id" => $refund_line_item['id'],
+                            "refunds" => $shopify_refunds,
+                            "order_lines" => $shopify_order['line_items'],
+                        ];
+                    }
+
+                    if (empty($shopify_refund['refund_line_items'])) {
+                        foreach ($shopify_order['line_items'] as $order_line_item) {
+                            $refunds['refunds'][] = [
+                                "id" => $shopify_refund['id'],
+                                "refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
+                                "partial_refund_compatible" => true,
+                                "refund_id" => $shopify_refund['id'],
+                                "refund_line_id" => $order_line_item['id'],
+                                "refunds" => $shopify_refunds,
+                                "order_lines" => $shopify_order['line_items'],
+                            ];
+                        }
+                    }
+                }
+            }
+
+            if ($next_page_params['page_info']) {
+                $refunds['cursor'] = base64_encode(json_encode([
+                    "limit" => $next_page_params['limit'],
+                    "page_info" => $next_page_params['page_info'],
+                    "status"=>$financial_status
+                ]));
+            }
+            return $refunds;
+
+        }
+
+        return $refunds;
+    }
+
+    /**
+     * @param string $start_date
+     * @param string $end_date
+     * @return array
+     */
+    private function get_number_of_orders(string $start_date, string $end_date)
+    {
         $order_count = 0;
 
-        foreach ($financial_statuses as $status) {
-            $results = $this->get_order_count($status, $start_date_utc, $end_date_utc);
+        foreach (self::FINANCIAL_STATUSES as $status) {
+            $results = $this->get_order_count($status, $start_date, $end_date);
             if ($this->is_error_response($results)) {
                 return [
                     'order_count' => 0,
@@ -815,111 +951,10 @@ class ShopifyClient
             $order_count += (int)$orders['count'];
         }
 
-        if ($order_count <= 0) {
-            return [
-                'order_count' => $order_count,
-            ];
-        }
-
-        $num_orders_so_far = 0;
-
-        $refunds['order_count'] = $order_count;
-        foreach ($financial_statuses as $financial_status) {
-            $next_page_params = [];
-            $page_cursor_limit = 0;
-            $is_first_call = true;
-            do {
-                $response = $is_first_call ?
-                    $this->get_raw_refunds($start_date_utc, $end_date_utc, $financial_status) :
-                    $this->get_with_cursor_pagination($next_page_params);
-
-                $next_page_params = $this->extract_next_page_params($response);
-                $next_page_exists = $next_page_params !== false;
-                $is_first_call = false;
-
-                if ($this->is_error_response($response)) {
-                    return [
-                        'order_count' => $order_count,
-                        'error' => 'Request to get orders was not successful',
-                        'platform_response' => $response
-                    ];
-                }
-
-                $refunded_orders = json_decode($response['response_body'], true);
-                if ($refunded_orders == false) {
-                    return [
-                        'order_count' => $order_count,
-                        'error' => 'Invalid json returned in get orders response',
-                        'platform_response' => $response
-                    ];
-                }
-
-                $shopify_orders = $refunded_orders['orders'];
-
-                if (!is_array($shopify_orders)) {
-                    break;
-                }
-
-                $orders_in_batch = count($shopify_orders);
-                $num_orders_so_far += $orders_in_batch;
-
-                foreach ($shopify_orders as $shopify_order) {
-                    if ($this->order_contains_cancellations($shopify_order)) {
-                        // If an order contains cancellations, we ignore any incoming refunds attached to that order
-                        // We are unable to process refunds for orders that have already been cancelled
-                        continue;
-                    }
-
-
-                    $shopify_refunds = $shopify_order['refunds'];
-
-                    foreach ($shopify_refunds as $shopify_refund) {
-
-                        if (empty($shopify_refund['transactions'])) {
-                            continue;
-                        }
-
-                        foreach ($shopify_refund['refund_line_items'] as $refund_line_item) {
-                            if ($refund_line_item['restock_type'] == 'cancel') {
-                                continue;
-                            }
-                            $refunds['refunds'][] = [
-                                "id" => $shopify_refund['id'],
-                                "refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
-                                "partial_refund_compatible" => true,
-                                "refund_id" => $shopify_refund['id'],
-                                "refund_line_id" => $refund_line_item['id'],
-                                "refunds" => $shopify_refunds,
-                                "order_lines" => $shopify_order['line_items'],
-                            ];
-                        }
-
-                        if (empty($shopify_refund['refund_line_items'])) {
-                            foreach ($shopify_order['line_items'] as $order_line_item) {
-                                $refunds['refunds'][] = [
-                                    "id" => $shopify_refund['id'],
-                                    "refund_number" => $shopify_refund['id'] . '-' . $refund_line_item['id'],
-                                    "partial_refund_compatible" => true,
-                                    "refund_id" => $shopify_refund['id'],
-                                    "refund_line_id" => $order_line_item['id'],
-                                    "refunds" => $shopify_refunds,
-                                    "order_lines" => $shopify_order['line_items'],
-                                ];
-                            }
-                        }
-                    }
-
-                }
-                $page_cursor_limit++;
-            } while ($next_page_exists && $page_cursor_limit < self::MAX_REFUND_PAGE_LIMIT);
-
-            if ($page_cursor_limit >= self::MAX_REFUND_PAGE_LIMIT) {
-                $refunds['page_limit_reached'] = true;
-            }
-        }
-
-        return $refunds;
-
+        return [
+            'order_count' => $order_count,
+            'refunds' => [],
+        ];
     }
 
     /**
@@ -989,12 +1024,13 @@ class ShopifyClient
     }
 
     /**
-     * @param $start_date
-     * @param $end_date
-     * @param $financial_status
+     * @param string $start_date
+     * @param string $end_date
+     * @param string $financial_status
+     * @param string $app_id
      * @return array
      */
-    private function get_raw_refunds($start_date, $end_date, $financial_status)
+    private function get_raw_refunds(string $start_date, string $end_date, string $financial_status, string $app_id)
     {
         $url = $this->get_orders_url();
         $headers = $this->get_headers();
@@ -1005,6 +1041,10 @@ class ShopifyClient
             'updated_at_max' => $end_date,
             'limit' => self::MAX_ORDER_BATCH_SIZE,
         ];
+
+        if($app_id) {
+            $query['attribution_app_id'] = $app_id;
+        }
         $options = [
             'headers' => $headers,
             'query' => $query
@@ -1018,6 +1058,7 @@ class ShopifyClient
         $headers = $this->get_headers();
         $options = [
             'headers' => $headers,
+            'query' => $params
         ];
         return $this->get($url, $options);
     }

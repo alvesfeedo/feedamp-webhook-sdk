@@ -202,20 +202,26 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
             "message" => "Missing value for required header token"
         ];
     }
-    foreach (["start_date", "end_date"] as $date) {
-        if (!isset($query_params[$date])) {
-            $validation_errors[] = [
-                "code" => "MISSING_REQUIRED_FIELD",
-                "message" => "Missing value for " . $date
-            ];
-            continue;
+
+    $cursor = $query_params['cursor'] ?? "";
+
+    if (!$cursor) {
+        foreach (["start_date", "end_date"] as $date) {
+            if (!isset($query_params[$date])) {
+                $validation_errors[] = [
+                    "code" => "MISSING_REQUIRED_FIELD",
+                    "message" => "Missing value for " . $date
+                ];
+                continue;
+            }
+            if (!strtotime($query_params[$date])) {
+                $validation_errors[] = [
+                    "code" => "FIELD_INVALID_VALUE",
+                    "message" => "Value for {$date} could not be parsed"
+                ];
+            }
         }
-        if (!strtotime($query_params[$date])) {
-            $validation_errors[] = [
-                "code" => "FIELD_INVALID_VALUE",
-                "message" => "Value for {$date} could not be parsed"
-            ];
-        }
+
     }
 
     if ($validation_errors) {
@@ -226,15 +232,13 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
 
     $start_date = $query_params['start_date'] ?? "";
     $end_date = $query_params['end_date'] ?? "";
+    $app_id = $query_params['attribution_app_id'] ?? "";
 
     $client = new HttpClient();
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
-    $refunds = $shopify_client->get_refunds($start_date, $end_date);
-
+    $refunds = $shopify_client->get_refunds($start_date, $end_date, $app_id, $cursor);
     $failed_request = isset($refunds['platform_response']);
-
-    $order_count = $refunds['order_count'];
 
     if ($failed_request) {
         $response = $response->withStatus(502);
@@ -246,9 +250,8 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
     }
 
     $response = $response->withStatus(200);
-    $response->getBody()->write(json_encode([
-        "refunds" => $refunds["refunds"],
-    ]));
+
+    $response->getBody()->write(json_encode($refunds));
     return $response;
 
 });
