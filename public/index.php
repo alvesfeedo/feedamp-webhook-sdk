@@ -238,7 +238,7 @@ $app->get('/order_refunds', function (Request $request, Response $response, $arg
     $shopify_client = new ShopifyClient($store_id, $access_token, $client);
 
     $refunds = $shopify_client->get_refunds($start_date, $end_date, $app_id, $cursor);
-    $failed_request = isset($refunds['platform_response']);
+    $failed_request = isset($refunds['error']);
 
     if ($failed_request) {
         $response = $response->withStatus(502);

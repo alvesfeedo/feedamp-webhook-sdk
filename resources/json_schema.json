@@ -284,6 +284,9 @@
                       "oneOf": [
                         {
                           "$ref": "#\/components\/schemas\/HttpErrorResponse"
+                        },
+                        {
+                          "$ref": "#\/components\/schemas\/CurlErrorResponse"
                         }
                       ]
                     }
@@ -453,6 +456,9 @@
                       "oneOf": [
                         {
                           "$ref": "#\/components\/schemas\/HttpErrorResponse"
+                        },
+                        {
+                          "$ref": "#\/components\/schemas\/CurlErrorResponse"
                         }
                       ]
                     }
@@ -1184,10 +1190,14 @@
           "cursor": {
             "description": "If this field is set there are additional pages to get. The client will need to make additional",
             "type": "boolean"
+          },
+          "platform_response": {
+            "$ref": "#\/components\/schemas\/SuccessResponse"
           }
         },
         "required": [
-          "refunds"
+          "refunds",
+          "platform_response"
         ]
       },
       "InventoryInfoSuccessResponse": {

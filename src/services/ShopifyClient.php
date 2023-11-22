@@ -791,8 +791,8 @@ class ShopifyClient
     public function get_refunds(string $start_date, string $end_date, string $app_id, string $cursor)
     {
         $refunds = [
-            'has_orders' => false,
             'refunds' => [],
+            'platform_response' => []
         ];
         $start_date_utc = null;
         $end_date_utc = null;
@@ -803,8 +803,8 @@ class ShopifyClient
 
             $order_count_info = $this->get_number_of_orders($start_date_utc, $end_date);
             if (!$order_count_info['order_count']) {
-                unset($refunds['order_count']);
-                return $order_count_info;
+                $refunds['platform_response'] = $order_count_info['platform_response'];
+                return $refunds;
             }
         }
 
@@ -846,7 +846,7 @@ class ShopifyClient
                     'platform_response' => $response
                 ];
             }
-
+            $refunds['platform_response'] = $response;
             $shopify_orders = $refunded_orders['orders'];
 
             if (!count($shopify_orders)) {
@@ -930,6 +930,7 @@ class ShopifyClient
     private function get_number_of_orders(string $start_date, string $end_date)
     {
         $order_count = 0;
+        $results = null;
 
         foreach (self::FINANCIAL_STATUSES as $status) {
             $results = $this->get_order_count($status, $start_date, $end_date);
@@ -954,6 +955,7 @@ class ShopifyClient
         return [
             'order_count' => $order_count,
             'refunds' => [],
+            'platform_response' => $results
         ];
     }
 
